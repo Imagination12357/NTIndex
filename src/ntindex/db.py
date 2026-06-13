@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import sqlite3
+from urllib.parse import parse_qs, urlparse
 
 
 @dataclass(frozen=True)
@@ -310,6 +311,7 @@ def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object
         video["game_names"] = game_names.get(video["game_id"], [video["game"]])
         video["source_names"] = character_names.get(video["source_id"], [video["source"]])
         video["target_names"] = character_names.get(video["target_id"], [video["target"]])
+        video["thumbnail_url"] = youtube_thumbnail_url(str(video["link"]))
     return {"games": games, "characters": characters, "videos": videos}
 
 
@@ -345,3 +347,33 @@ def _alias_names(rows: list[dict[str, object]], key: str) -> dict[object, list[s
     for row in rows:
         aliases.setdefault(row[key], []).append(str(row["name"]))
     return aliases
+
+
+def youtube_thumbnail_url(link: str) -> str | None:
+    video_id = youtube_video_id(link)
+    if video_id is None:
+        return None
+    return f"https://img.youtube.com/vi/{video_id}/0.jpg"
+
+
+def youtube_video_id(link: str) -> str | None:
+    parsed = urlparse(link)
+    host = parsed.netloc.lower()
+    if host.endswith("youtube.com"):
+        values = parse_qs(parsed.query).get("v")
+        if values and values[0]:
+            return values[0]
+        if parsed.path.startswith("/shorts/"):
+            return _first_path_part_after(parsed.path, "shorts")
+        if parsed.path.startswith("/embed/"):
+            return _first_path_part_after(parsed.path, "embed")
+    if host.endswith("youtu.be"):
+        return parsed.path.strip("/") or None
+    return None
+
+
+def _first_path_part_after(path: str, prefix: str) -> str | None:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2 or parts[0] != prefix:
+        return None
+    return parts[1] or None

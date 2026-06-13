@@ -9,6 +9,8 @@ from ntindex.db import (
     init_db,
     merge_character,
     merge_game,
+    youtube_thumbnail_url,
+    youtube_video_id,
 )
 
 
@@ -53,6 +55,8 @@ def test_build_site_writes_search_json_and_game_page(tmp_path):
     assert data["videos"][0]["source"] == "Furina"
     assert (out / "index.html").exists()
     assert (out / "game" / "genshin-impact.html").exists()
+    assert (out / "assets" / "home.svg").exists()
+    assert (out / "assets" / "copy.svg").exists()
 
 
 def test_merge_character_requires_same_game(tmp_path):
@@ -161,3 +165,15 @@ def test_merge_character_keeps_alias_names_searchable(tmp_path):
         "Lesser Lord Kusanali",
         "Nahida",
     }
+
+
+def test_youtube_thumbnail_url_extracts_video_id():
+    assert youtube_video_id("https://www.youtube.com/watch?v=abc123") == "abc123"
+    assert youtube_video_id("https://youtu.be/abc123") == "abc123"
+    assert youtube_video_id("https://www.youtube.com/shorts/abc123") == "abc123"
+    assert youtube_video_id("https://www.youtube.com/embed/abc123") == "abc123"
+    assert youtube_video_id("https://example.test/video") is None
+    assert (
+        youtube_thumbnail_url("https://www.youtube.com/watch?v=abc123")
+        == "https://img.youtube.com/vi/abc123/0.jpg"
+    )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import shutil
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -15,6 +16,7 @@ def build_site(conn, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     game_dir = output_dir / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
+    _copy_assets(output_dir)
 
     data = fetch_site_data(conn)
     (output_dir / "search.json").write_text(
@@ -53,17 +55,30 @@ def _template_env() -> Environment:
     )
 
 
+def _copy_assets(output_dir: Path) -> None:
+    source_dir = Path("assets")
+    if not source_dir.exists():
+        return
+
+    target_dir = output_dir / "assets"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for asset in source_dir.iterdir():
+        if asset.is_file():
+            shutil.copy2(asset, target_dir / asset.name)
+
+
 STYLE_CSS = """body {
   margin: 0;
   font-family: Arial, sans-serif;
   color: #171717;
-  background: #f7f7f7;
+  background: #f4f5f7;
 }
 
 main {
   width: min(960px, calc(100% - 32px));
   margin: 0 auto;
   padding: 32px 0;
+  animation: page-in 180ms ease-out both;
 }
 
 header {
@@ -81,7 +96,8 @@ p {
 }
 
 a {
-  color: #064f8f;
+  color: inherit;
+  text-decoration: none;
 }
 
 .games {
@@ -93,14 +109,135 @@ a {
 .result {
   display: block;
   padding: 12px;
-  border: 1px solid #ddd;
+  border: 1px solid #d9dde3;
   border-radius: 6px;
   background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.result.has-thumbnail {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.result {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.result-link {
+  min-width: 0;
+}
+
+.result-link.has-thumbnail {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.result.has-thumbnail {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+
+.thumbnail {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #e5e7eb;
+}
+
+.copy-link {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.copy-link:hover {
+  transform: translateY(-1px);
+  border-color: #a7b1c2;
+  background: #f8fafc;
+}
+
+.copy-link.copied {
+  border-color: #5c946e;
+  background: #eef8f1;
+}
+
+.copy-link img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.game-link:hover,
+.result:hover {
+  transform: translateY(-2px);
+  border-color: #a7b1c2;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  background: #fbfcff;
+}
+
+.game-link:focus-visible,
+.result-link:focus-visible,
+.copy-link:focus-visible,
+nav a:focus-visible {
+  outline: 3px solid #8ab4f8;
+  outline-offset: 3px;
+}
+
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #303846;
+  font-weight: 700;
+  line-height: 1;
+  transition: color 140ms ease;
+}
+
+.home-link span {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding-top: 1px;
+}
+
+.home-link:hover {
+  color: #111827;
+}
+
+.home-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .search {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto 1fr 180px;
   align-items: end;
   gap: 12px;
   margin-bottom: 24px;
@@ -112,12 +249,14 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   min-width: 0;
   padding: 10px;
   border: 1px solid #bbb;
   border-radius: 4px;
   font: inherit;
+  background: #fff;
 }
 
 .as-text {
@@ -136,6 +275,37 @@ input {
   font-size: 14px;
 }
 
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main {
+    animation: none;
+  }
+
+  .game-link,
+  .result,
+  .copy-link,
+  nav a {
+    transition: none;
+  }
+
+  .game-link:hover,
+  .result:hover,
+  .copy-link:hover {
+    transform: none;
+  }
+}
+
 @media (max-width: 640px) {
   .search {
     grid-template-columns: 1fr;
@@ -143,6 +313,19 @@ input {
 
   .as-text {
     padding-bottom: 0;
+  }
+
+  .result,
+  .result.has-thumbnail {
+    grid-template-columns: 1fr;
+  }
+
+  .result-link.has-thumbnail {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-link {
+    width: 100%;
   }
 }
 """
@@ -158,6 +341,7 @@ APP_JS = """async function main() {
   const data = await response.json();
   const sourceInput = document.getElementById("sourceQuery");
   const targetInput = document.getElementById("targetQuery");
+  const sortInput = document.getElementById("sortMode");
   const results = document.getElementById("results");
 
   function render() {
@@ -173,6 +357,7 @@ APP_JS = """async function main() {
       const targetOk = !targetQuery || targetNames.some((name) => name.toLowerCase().includes(targetQuery));
       return sourceOk && targetOk;
     });
+    sortVideos(videos, sortInput.value);
 
     results.innerHTML = "";
     if (videos.length === 0) {
@@ -181,15 +366,49 @@ APP_JS = """async function main() {
     }
 
     for (const video of videos) {
-      const item = document.createElement("a");
+      const item = document.createElement("article");
       item.className = "result";
-      item.href = video.link;
-      item.textContent = video.title;
+
+      const link = document.createElement("a");
+      link.className = "result-link";
+      link.href = video.link;
+
+      if (video.thumbnail_url) {
+        link.classList.add("has-thumbnail");
+        const thumbnail = document.createElement("img");
+        thumbnail.className = "thumbnail";
+        thumbnail.src = video.thumbnail_url;
+        thumbnail.alt = "";
+        thumbnail.loading = "lazy";
+        link.appendChild(thumbnail);
+      }
+
+      const content = document.createElement("div");
+      content.className = "result-content";
+
+      const title = document.createElement("div");
+      title.textContent = video.title;
+      content.appendChild(title);
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `${video.source} as ${video.target}`;
-      item.appendChild(meta);
+      meta.textContent = `${video.source} → ${video.target}`;
+      content.appendChild(meta);
+
+      link.appendChild(content);
+      item.appendChild(link);
+
+      const copyButton = document.createElement("button");
+      copyButton.className = "copy-link";
+      copyButton.type = "button";
+      copyButton.setAttribute("aria-label", `Copy link for ${video.title}`);
+      copyButton.innerHTML = '<img src="../assets/copy.svg" alt="">';
+      copyButton.addEventListener("click", async () => {
+        const copied = await copyText(video.link);
+        copyButton.setAttribute("aria-label", copied ? "Copied" : "Copy failed");
+        copyButton.classList.toggle("copied", copied);
+      });
+      item.appendChild(copyButton);
 
       results.appendChild(item);
     }
@@ -197,7 +416,47 @@ APP_JS = """async function main() {
 
   sourceInput.addEventListener("input", render);
   targetInput.addEventListener("input", render);
+  sortInput.addEventListener("change", render);
   render();
+}
+
+function sortVideos(videos, mode) {
+  const [field, direction] = mode.split("-");
+  const factor = direction === "desc" ? -1 : 1;
+  videos.sort((left, right) => {
+    const leftValue = String(left[field] || "").toLocaleLowerCase();
+    const rightValue = String(right[field] || "").toLocaleLowerCase();
+    return leftValue.localeCompare(rightValue) * factor;
+  });
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return fallbackCopyText(text);
+    }
+  }
+
+  return fallbackCopyText(text);
+}
+
+function fallbackCopyText(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
 }
 
 main();

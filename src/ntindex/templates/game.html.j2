@@ -8,7 +8,12 @@
 </head>
 <body data-game-id="{{ game.id }}">
   <main>
-    <nav><a href="../index.html">NTIndex</a></nav>
+    <nav>
+      <a class="home-link" href="../index.html" aria-label="Back to NTIndex">
+        <img class="home-icon" src="../assets/home.svg" alt="">
+        <span>NTIndex</span>
+      </a>
+    </nav>
     <header>
       <h1>{{ game.name }}</h1>
       <p>Search source and target characters.</p>
@@ -22,6 +27,17 @@
       <label>
         Target
         <input id="targetQuery" type="search" autocomplete="off">
+      </label>
+      <label>
+        Sort
+        <select id="sortMode">
+          <option value="title-asc">Title A-Z</option>
+          <option value="title-desc">Title Z-A</option>
+          <option value="source-asc">Source A-Z</option>
+          <option value="source-desc">Source Z-A</option>
+          <option value="target-asc">Target A-Z</option>
+          <option value="target-desc">Target Z-A</option>
+        </select>
       </label>
     </section>
     <section id="results" class="results" aria-live="polite"></section>
