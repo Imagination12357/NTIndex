@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NTIndex</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>NTIndex</h1>
+      <p>NeonTeam model-swap index</p>
+    </header>
+    <section class="games" aria-label="Games">
+      {% for game in games %}
+      <a class="game-link" href="game/{{ slugify(game.name) }}.html">{{ game.name }}</a>
+      {% else %}
+      <p>No games indexed yet.</p>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>

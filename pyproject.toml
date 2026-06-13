@@ -9,7 +9,9 @@ description = "Static index generator for NeonTeam model-swap videos."
 readme = "SPEC.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-dependencies = []
+dependencies = [
+    "jinja2>=3.1",
+]
 
 [dependency-groups]
 dev = [

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import re
 
+from jinja2 import Environment, PackageLoader, select_autoescape
+
 from ntindex.db import fetch_site_data
 
 
@@ -21,12 +23,20 @@ def build_site(conn, output_dir: Path) -> None:
     )
     (output_dir / "style.css").write_text(STYLE_CSS, encoding="utf-8")
     (output_dir / "app.js").write_text(APP_JS, encoding="utf-8")
-    (output_dir / "index.html").write_text(_render_index(data["games"]), encoding="utf-8")
+
+    env = _template_env()
+    index_template = env.get_template("index.html.j2")
+    game_template = env.get_template("game.html.j2")
+
+    (output_dir / "index.html").write_text(
+        index_template.render(games=data["games"], slugify=slugify),
+        encoding="utf-8",
+    )
 
     for game in data["games"]:
         slug = slugify(str(game["name"]))
         path = game_dir / f"{slug}.html"
-        path.write_text(_render_game_page(game), encoding="utf-8")
+        path.write_text(game_template.render(game=game), encoding="utf-8")
 
 
 def slugify(value: str) -> str:
@@ -34,77 +44,12 @@ def slugify(value: str) -> str:
     return slug or "game"
 
 
-def _render_index(games: list[dict[str, object]]) -> str:
-    game_links = "\n".join(
-        f'<a class="game-link" href="game/{slugify(str(game["name"]))}.html">{_escape(str(game["name"]))}</a>'
-        for game in games
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NTIndex</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main>
-    <header>
-      <h1>NTIndex</h1>
-      <p>NeonTeam model-swap index</p>
-    </header>
-    <section class="games" aria-label="Games">
-      {game_links or '<p>No games indexed yet.</p>'}
-    </section>
-  </main>
-</body>
-</html>
-"""
-
-
-def _render_game_page(game: dict[str, object]) -> str:
-    name = _escape(str(game["name"]))
-    game_id = int(game["id"])
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{name} - NTIndex</title>
-  <link rel="stylesheet" href="../style.css">
-</head>
-<body data-game-id="{game_id}">
-  <main>
-    <nav><a href="../index.html">NTIndex</a></nav>
-    <header>
-      <h1>{name}</h1>
-      <p>Search source and target characters.</p>
-    </header>
-    <section class="search">
-      <label>
-        Source
-        <input id="sourceQuery" type="search" autocomplete="off">
-      </label>
-      <span class="as-text">as</span>
-      <label>
-        Target
-        <input id="targetQuery" type="search" autocomplete="off">
-      </label>
-    </section>
-    <section id="results" class="results" aria-live="polite"></section>
-  </main>
-  <script src="../app.js"></script>
-</body>
-</html>
-"""
-
-
-def _escape(value: str) -> str:
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+def _template_env() -> Environment:
+    return Environment(
+        loader=PackageLoader("ntindex", "templates"),
+        autoescape=select_autoescape(["html", "xml"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
     )
 
 
