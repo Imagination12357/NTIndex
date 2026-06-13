@@ -19,8 +19,10 @@ def build_site(conn, output_dir: Path) -> None:
     _copy_assets(output_dir)
 
     data = fetch_site_data(conn)
-    (output_dir / "search.json").write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
+    search_json = json.dumps(data, ensure_ascii=False, indent=2)
+    (output_dir / "search.json").write_text(search_json, encoding="utf-8")
+    (output_dir / "search.js").write_text(
+        f"window.NTINDEX_DATA = {search_json};\n",
         encoding="utf-8",
     )
     (output_dir / "style.css").write_text(STYLE_CSS, encoding="utf-8")
@@ -337,8 +339,10 @@ APP_JS = """async function main() {
     return;
   }
 
-  const response = await fetch("../search.json");
-  const data = await response.json();
+  const data = window.NTINDEX_DATA;
+  if (!data) {
+    return;
+  }
   const sourceInput = document.getElementById("sourceQuery");
   const targetInput = document.getElementById("targetQuery");
   const sortInput = document.getElementById("sortMode");
