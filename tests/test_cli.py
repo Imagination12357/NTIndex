@@ -35,7 +35,7 @@ def test_cli_crawl_and_build_with_example_input(tmp_path):
             "--db",
             str(db_path),
             "build",
-            "--out",
+            "--dist",
             str(out_dir),
         ],
         check=False,
@@ -69,7 +69,7 @@ def test_cli_update_runs_crawl_then_build(tmp_path):
             "update",
             "--input",
             "examples/videos.json",
-            "--out",
+            "--dist",
             str(out_dir),
         ],
         check=False,
@@ -81,3 +81,37 @@ def test_cli_update_runs_crawl_then_build(tmp_path):
     assert "inserted 2 video(s)" in result.stdout
     assert f"built {out_dir}" in result.stdout
     assert (out_dir / "search.json").exists()
+
+
+def test_cli_crawl_uses_default_channel_id(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_load(channel_id):
+        calls.append(channel_id)
+        return [], []
+
+    monkeypatch.setattr("ntindex.cli.load_videos_from_ytdlp_channel", fake_load)
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(tmp_path / "ntindex.sqlite3"), "crawl"])
+
+    assert result == 0
+    assert calls == ["UCI4No3r3X66tSQbVgXse_MA"]
+
+
+def test_cli_crawl_recent_uses_rss_channel_id(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_load(channel_id):
+        calls.append(channel_id)
+        return [], []
+
+    monkeypatch.setattr("ntindex.cli.load_videos_from_youtube_channel", fake_load)
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(tmp_path / "ntindex.sqlite3"), "crawl", "--recent"])
+
+    assert result == 0
+    assert calls == ["UCI4No3r3X66tSQbVgXse_MA"]

@@ -7,12 +7,19 @@ from pathlib import Path
 import sys
 
 from ntindex.builder import build_site
-from ntindex.crawler import load_videos_from_json
+from ntindex.crawler import (
+    load_videos_from_feed_url,
+    load_videos_from_json,
+    load_videos_from_youtube_channel,
+    load_videos_from_ytdlp_channel,
+    load_videos_from_ytdlp_url,
+)
 from ntindex.db import add_videos, connect, init_db, merge_character, merge_game
 
 
 DEFAULT_DB = "ntindex.sqlite3"
 DEFAULT_DIST = "dist"
+DEFAULT_CHANNEL_ID = "UCI4No3r3X66tSQbVgXse_MA"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,14 +53,14 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     crawl = subparsers.add_parser("crawl", help="ingest videos")
-    crawl.add_argument("--input", required=True, type=Path, help="JSON file with video items")
+    _add_crawl_source_args(crawl)
 
     build = subparsers.add_parser("build", help="generate static site")
-    build.add_argument("--out", default=DEFAULT_DIST, type=Path, help="output directory")
+    _add_dist_arg(build)
 
     update = subparsers.add_parser("update", help="crawl then build")
-    update.add_argument("--input", required=True, type=Path, help="JSON file with video items")
-    update.add_argument("--out", default=DEFAULT_DIST, type=Path, help="output directory")
+    _add_crawl_source_args(update)
+    _add_dist_arg(update)
 
     merge = subparsers.add_parser("merge", help="merge duplicate records")
     merge_subparsers = merge.add_subparsers(dest="merge_kind", required=True)
@@ -69,10 +76,38 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_crawl_source_args(parser: argparse.ArgumentParser) -> None:
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--input", type=Path, help="JSON file with video items")
+    source.add_argument("--feed-url", help="YouTube Atom feed URL")
+    source.add_argument("--channel-url", help="YouTube channel URL for yt-dlp")
+    source.add_argument(
+        "--channel-id",
+        default=DEFAULT_CHANNEL_ID,
+        help="YouTube channel ID",
+    )
+    parser.add_argument(
+        "--recent",
+        action="store_true",
+        help="use the recent YouTube Atom feed instead of yt-dlp backfill",
+    )
+
+
+def _add_dist_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--dist",
+        "--out",
+        dest="dist",
+        default=DEFAULT_DIST,
+        type=Path,
+        help="static site output directory",
+    )
+
+
 def _crawl(args: argparse.Namespace) -> int:
     conn = connect(args.db)
     init_db(conn)
-    videos, skipped = load_videos_from_json(args.input)
+    videos, skipped = _load_crawl_source(args)
     inserted = add_videos(conn, videos)
     print(f"inserted {inserted} video(s)")
     for message in skipped:
@@ -80,11 +115,25 @@ def _crawl(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_crawl_source(args: argparse.Namespace):
+    if args.input is not None:
+        return load_videos_from_json(args.input)
+    if args.feed_url:
+        return load_videos_from_feed_url(args.feed_url)
+    if args.channel_url:
+        return load_videos_from_ytdlp_url(args.channel_url)
+    if args.recent:
+        return load_videos_from_youtube_channel(args.channel_id)
+    if args.channel_id:
+        return load_videos_from_ytdlp_channel(args.channel_id)
+    raise ValueError("crawl source is required")
+
+
 def _build(args: argparse.Namespace) -> int:
     conn = connect(args.db)
     init_db(conn)
-    build_site(conn, args.out)
-    print(f"built {args.out}")
+    build_site(conn, args.dist)
+    print(f"built {args.dist}")
     return 0
 
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+  <entry>
+    <yt:videoId>example-furina-nahida</yt:videoId>
+    <title>Furina as Nahida | Genshin Impact Model Swap</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=example-furina-nahida"/>
+    <published>2026-01-01T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <yt:videoId>example-march-firefly</yt:videoId>
+    <title>March 7th as Firefly | Honkai Star Rail Model Swap</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=example-march-firefly"/>
+    <published>2026-01-02T00:00:00+00:00</published>
+  </entry>
+  <entry>
+    <yt:videoId>example-invalid-title</yt:videoId>
+    <title>NeonTeam model swap showcase</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=example-invalid-title"/>
+    <published>2026-01-03T00:00:00+00:00</published>
+  </entry>
+</feed>
