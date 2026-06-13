@@ -1,0 +1,230 @@
+"""SQLite persistence for NTIndex.
+
+SQLite is the source of truth. JSON and HTML generated from this module are
+artifacts and should be rebuilt instead of edited manually.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import sqlite3
+
+
+@dataclass(frozen=True)
+class VideoInput:
+    title: str
+    link: str
+    source: str
+    target: str
+    game: str
+    published_at: str | None = None
+
+
+def connect(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS games (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS characters (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            game_id INTEGER NOT NULL,
+
+            UNIQUE(name, game_id),
+
+            FOREIGN KEY(game_id)
+                REFERENCES games(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS videos (
+            id INTEGER PRIMARY KEY,
+
+            source_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            game_id INTEGER NOT NULL,
+
+            title TEXT NOT NULL,
+            link TEXT NOT NULL UNIQUE,
+
+            published_at TEXT,
+            crawled_at TEXT NOT NULL,
+
+            FOREIGN KEY(source_id)
+                REFERENCES characters(id),
+
+            FOREIGN KEY(target_id)
+                REFERENCES characters(id),
+
+            FOREIGN KEY(game_id)
+                REFERENCES games(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_videos_swap
+        ON videos (
+            game_id,
+            source_id,
+            target_id
+        );
+        """
+    )
+    conn.commit()
+
+
+def add_video(conn: sqlite3.Connection, video: VideoInput) -> bool:
+    """Insert a parsed video.
+
+    Returns True when the video was inserted and False when its link already
+    existed.
+    """
+    if _link_exists(conn, video.link):
+        return False
+
+    game_id = get_or_create_game(conn, video.game)
+    source_id = get_or_create_character(conn, video.source, game_id)
+    target_id = get_or_create_character(conn, video.target, game_id)
+    crawled_at = datetime.now(timezone.utc).isoformat()
+
+    conn.execute(
+        """
+        INSERT INTO videos (
+            source_id,
+            target_id,
+            game_id,
+            title,
+            link,
+            published_at,
+            crawled_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            source_id,
+            target_id,
+            game_id,
+            video.title,
+            video.link,
+            video.published_at,
+            crawled_at,
+        ),
+    )
+    conn.commit()
+    return True
+
+
+def add_videos(conn: sqlite3.Connection, videos: Iterable[VideoInput]) -> int:
+    inserted = 0
+    for video in videos:
+        if add_video(conn, video):
+            inserted += 1
+    return inserted
+
+
+def get_or_create_game(conn: sqlite3.Connection, name: str) -> int:
+    conn.execute("INSERT OR IGNORE INTO games (name) VALUES (?)", (name,))
+    row = conn.execute("SELECT id FROM games WHERE name = ?", (name,)).fetchone()
+    if row is None:
+        raise RuntimeError(f"failed to create game: {name}")
+    return int(row["id"])
+
+
+def get_or_create_character(conn: sqlite3.Connection, name: str, game_id: int) -> int:
+    conn.execute(
+        "INSERT OR IGNORE INTO characters (name, game_id) VALUES (?, ?)",
+        (name, game_id),
+    )
+    row = conn.execute(
+        "SELECT id FROM characters WHERE name = ? AND game_id = ?",
+        (name, game_id),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"failed to create character: {name}")
+    return int(row["id"])
+
+
+def merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
+    if old_id == new_id:
+        raise ValueError("old_id and new_id must be different")
+    _require_row(conn, "games", old_id)
+    _require_row(conn, "games", new_id)
+
+    try:
+        with conn:
+            conn.execute("UPDATE characters SET game_id = ? WHERE game_id = ?", (new_id, old_id))
+            conn.execute("UPDATE videos SET game_id = ? WHERE game_id = ?", (new_id, old_id))
+            conn.execute("DELETE FROM games WHERE id = ?", (old_id,))
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("game merge would violate character uniqueness") from exc
+
+
+def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
+    if old_id == new_id:
+        raise ValueError("old_id and new_id must be different")
+
+    old_row = _require_row(conn, "characters", old_id)
+    new_row = _require_row(conn, "characters", new_id)
+    if old_row["game_id"] != new_row["game_id"]:
+        raise ValueError("characters must belong to the same game")
+
+    with conn:
+        conn.execute("UPDATE videos SET source_id = ? WHERE source_id = ?", (new_id, old_id))
+        conn.execute("UPDATE videos SET target_id = ? WHERE target_id = ?", (new_id, old_id))
+        conn.execute("DELETE FROM characters WHERE id = ?", (old_id,))
+
+
+def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object]]]:
+    games = [dict(row) for row in conn.execute("SELECT id, name FROM games ORDER BY name")]
+    characters = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT id, name, game_id FROM characters ORDER BY name, id"
+        )
+    ]
+    videos = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT
+                videos.id,
+                videos.title,
+                videos.link,
+                videos.published_at,
+                videos.crawled_at,
+                games.id AS game_id,
+                games.name AS game,
+                source.id AS source_id,
+                source.name AS source,
+                target.id AS target_id,
+                target.name AS target
+            FROM videos
+            JOIN games ON games.id = videos.game_id
+            JOIN characters AS source ON source.id = videos.source_id
+            JOIN characters AS target ON target.id = videos.target_id
+            ORDER BY games.name, source.name, target.name, videos.published_at DESC, videos.id DESC
+            """
+        )
+    ]
+    return {"games": games, "characters": characters, "videos": videos}
+
+
+def _link_exists(conn: sqlite3.Connection, link: str) -> bool:
+    row = conn.execute("SELECT 1 FROM videos WHERE link = ?", (link,)).fetchone()
+    return row is not None
+
+
+def _require_row(conn: sqlite3.Connection, table: str, row_id: int) -> sqlite3.Row:
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"{table} row not found: {row_id}")
+    return row
