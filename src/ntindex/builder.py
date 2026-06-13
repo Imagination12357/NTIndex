@@ -167,8 +167,10 @@ APP_JS = """async function main() {
       if (video.game_id !== gameId) {
         return false;
       }
-      const sourceOk = !sourceQuery || video.source.toLowerCase().includes(sourceQuery);
-      const targetOk = !targetQuery || video.target.toLowerCase().includes(targetQuery);
+      const sourceNames = video.source_names || [video.source];
+      const targetNames = video.target_names || [video.target];
+      const sourceOk = !sourceQuery || sourceNames.some((name) => name.toLowerCase().includes(sourceQuery));
+      const targetOk = !targetQuery || targetNames.some((name) => name.toLowerCase().includes(targetQuery));
       return sourceOk && targetOk;
     });
 

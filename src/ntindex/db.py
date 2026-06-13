@@ -34,11 +34,13 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS games (
             id INTEGER PRIMARY KEY,
+            canonical_id INTEGER,
             name TEXT NOT NULL UNIQUE
         );
 
         CREATE TABLE IF NOT EXISTS characters (
             id INTEGER PRIMARY KEY,
+            canonical_id INTEGER,
             name TEXT NOT NULL,
             game_id INTEGER NOT NULL,
 
@@ -79,6 +81,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    _ensure_canonical_column(conn, "games")
+    _ensure_canonical_column(conn, "characters")
     conn.commit()
 
 
@@ -136,7 +140,12 @@ def get_or_create_game(conn: sqlite3.Connection, name: str) -> int:
     row = conn.execute("SELECT id FROM games WHERE name = ?", (name,)).fetchone()
     if row is None:
         raise RuntimeError(f"failed to create game: {name}")
-    return int(row["id"])
+    game_id = int(row["id"])
+    conn.execute(
+        "UPDATE games SET canonical_id = id WHERE id = ? AND canonical_id IS NULL",
+        (game_id,),
+    )
+    return game_id
 
 
 def get_or_create_character(conn: sqlite3.Connection, name: str, game_id: int) -> int:
@@ -150,22 +159,43 @@ def get_or_create_character(conn: sqlite3.Connection, name: str, game_id: int) -
     ).fetchone()
     if row is None:
         raise RuntimeError(f"failed to create character: {name}")
-    return int(row["id"])
+    character_id = int(row["id"])
+    conn.execute(
+        "UPDATE characters SET canonical_id = id WHERE id = ? AND canonical_id IS NULL",
+        (character_id,),
+    )
+    return character_id
 
 
 def merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
     if old_id == new_id:
         raise ValueError("old_id and new_id must be different")
-    _require_row(conn, "games", old_id)
-    _require_row(conn, "games", new_id)
+    old_row = _require_row(conn, "games", old_id)
+    new_row = _require_row(conn, "games", new_id)
+    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
+    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
 
-    try:
-        with conn:
-            conn.execute("UPDATE characters SET game_id = ? WHERE game_id = ?", (new_id, old_id))
-            conn.execute("UPDATE videos SET game_id = ? WHERE game_id = ?", (new_id, old_id))
-            conn.execute("DELETE FROM games WHERE id = ?", (old_id,))
-    except sqlite3.IntegrityError as exc:
-        raise ValueError("game merge would violate character uniqueness") from exc
+    with conn:
+        conn.execute(
+            """
+            UPDATE videos
+            SET game_id = ?
+            WHERE game_id IN (
+                SELECT id
+                FROM games
+                WHERE id = ? OR canonical_id = ?
+            )
+            """,
+            (new_canonical_id, old_id, old_canonical_id),
+        )
+        conn.execute(
+            """
+            UPDATE games
+            SET canonical_id = ?
+            WHERE id = ? OR canonical_id = ?
+            """,
+            (new_canonical_id, old_id, old_canonical_id),
+        )
 
 
 def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
@@ -174,21 +204,74 @@ def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
 
     old_row = _require_row(conn, "characters", old_id)
     new_row = _require_row(conn, "characters", new_id)
-    if old_row["game_id"] != new_row["game_id"]:
-        raise ValueError("characters must belong to the same game")
+    old_game_id = _canonical_game_id(conn, int(old_row["game_id"]))
+    new_game_id = _canonical_game_id(conn, int(new_row["game_id"]))
+    if old_game_id != new_game_id:
+        raise ValueError("characters must belong to the same canonical game")
+
+    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
+    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
 
     with conn:
-        conn.execute("UPDATE videos SET source_id = ? WHERE source_id = ?", (new_id, old_id))
-        conn.execute("UPDATE videos SET target_id = ? WHERE target_id = ?", (new_id, old_id))
-        conn.execute("DELETE FROM characters WHERE id = ?", (old_id,))
+        conn.execute(
+            """
+            UPDATE videos
+            SET source_id = ?
+            WHERE source_id IN (
+                SELECT id
+                FROM characters
+                WHERE id = ? OR canonical_id = ?
+            )
+            """,
+            (new_canonical_id, old_id, old_canonical_id),
+        )
+        conn.execute(
+            """
+            UPDATE videos
+            SET target_id = ?
+            WHERE target_id IN (
+                SELECT id
+                FROM characters
+                WHERE id = ? OR canonical_id = ?
+            )
+            """,
+            (new_canonical_id, old_id, old_canonical_id),
+        )
+        conn.execute(
+            """
+            UPDATE characters
+            SET canonical_id = ?
+            WHERE id = ? OR canonical_id = ?
+            """,
+            (new_canonical_id, old_id, old_canonical_id),
+        )
 
 
 def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object]]]:
-    games = [dict(row) for row in conn.execute("SELECT id, name FROM games ORDER BY name")]
+    games = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT canonical.id, canonical.name
+            FROM games AS canonical
+            WHERE canonical.id = COALESCE(canonical.canonical_id, canonical.id)
+            ORDER BY canonical.name
+            """
+        )
+    ]
     characters = [
         dict(row)
         for row in conn.execute(
-            "SELECT id, name, game_id FROM characters ORDER BY name, id"
+            """
+            SELECT
+                characters.id,
+                characters.name,
+                COALESCE(games.canonical_id, games.id) AS game_id,
+                COALESCE(characters.canonical_id, characters.id) AS canonical_id
+            FROM characters
+            JOIN games ON games.id = characters.game_id
+            ORDER BY characters.name, characters.id
+            """
         )
     ]
     videos = [
@@ -201,20 +284,32 @@ def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object
                 videos.link,
                 videos.published_at,
                 videos.crawled_at,
-                games.id AS game_id,
-                games.name AS game,
-                source.id AS source_id,
-                source.name AS source,
-                target.id AS target_id,
-                target.name AS target
+                canonical_game.id AS game_id,
+                canonical_game.name AS game,
+                COALESCE(source.canonical_id, source.id) AS source_id,
+                canonical_source.name AS source,
+                COALESCE(target.canonical_id, target.id) AS target_id,
+                canonical_target.name AS target
             FROM videos
             JOIN games ON games.id = videos.game_id
+            JOIN games AS canonical_game
+                ON canonical_game.id = COALESCE(games.canonical_id, games.id)
             JOIN characters AS source ON source.id = videos.source_id
+            JOIN characters AS canonical_source
+                ON canonical_source.id = COALESCE(source.canonical_id, source.id)
             JOIN characters AS target ON target.id = videos.target_id
-            ORDER BY games.name, source.name, target.name, videos.published_at DESC, videos.id DESC
+            JOIN characters AS canonical_target
+                ON canonical_target.id = COALESCE(target.canonical_id, target.id)
+            ORDER BY canonical_game.name, canonical_source.name, canonical_target.name, videos.published_at DESC, videos.id DESC
             """
         )
     ]
+    game_names = _alias_names(games, "id")
+    character_names = _alias_names(characters, "canonical_id")
+    for video in videos:
+        video["game_names"] = game_names.get(video["game_id"], [video["game"]])
+        video["source_names"] = character_names.get(video["source_id"], [video["source"]])
+        video["target_names"] = character_names.get(video["target_id"], [video["target"]])
     return {"games": games, "characters": characters, "videos": videos}
 
 
@@ -228,3 +323,25 @@ def _require_row(conn: sqlite3.Connection, table: str, row_id: int) -> sqlite3.R
     if row is None:
         raise ValueError(f"{table} row not found: {row_id}")
     return row
+
+
+def _ensure_canonical_column(conn: sqlite3.Connection, table: str) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    if "canonical_id" not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN canonical_id INTEGER")
+    conn.execute(f"UPDATE {table} SET canonical_id = id WHERE canonical_id IS NULL")
+
+
+def _canonical_game_id(conn: sqlite3.Connection, game_id: int) -> int:
+    row = _require_row(conn, "games", game_id)
+    return int(row["canonical_id"] or row["id"])
+
+
+def _alias_names(rows: list[dict[str, object]], key: str) -> dict[object, list[str]]:
+    aliases: dict[object, list[str]] = {}
+    for row in rows:
+        aliases.setdefault(row[key], []).append(str(row["name"]))
+    return aliases
