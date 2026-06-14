@@ -14,7 +14,10 @@
     </header>
     <section class="games" aria-label="Games">
       {% for game in games %}
-      <a class="game-link" href="game/{{ slugify(game.name) }}.html">{{ game.name }}</a>
+      <a class="game-link" href="game/{{ slugify(game.name) }}.html">
+        <span>{{ game.name }}</span>
+        <span class="game-count">{{ game.video_count }} videos</span>
+      </a>
       {% else %}
       <p>No games indexed yet.</p>
       {% endfor %}

@@ -31,13 +31,14 @@ def build_site(conn, output_dir: Path) -> None:
     env = _template_env()
     index_template = env.get_template("index.html.j2")
     game_template = env.get_template("game.html.j2")
+    games = _games_with_video_counts(data)
 
     (output_dir / "index.html").write_text(
-        index_template.render(games=data["games"], slugify=slugify),
+        index_template.render(games=games, slugify=slugify),
         encoding="utf-8",
     )
 
-    for game in data["games"]:
+    for game in games:
         slug = slugify(str(game["name"]))
         path = game_dir / f"{slug}.html"
         path.write_text(game_template.render(game=game), encoding="utf-8")
@@ -67,6 +68,19 @@ def _copy_assets(output_dir: Path) -> None:
     for asset in source_dir.iterdir():
         if asset.is_file():
             shutil.copy2(asset, target_dir / asset.name)
+
+
+def _games_with_video_counts(data: dict[str, list[dict[str, object]]]) -> list[dict[str, object]]:
+    counts: dict[object, int] = {}
+    for video in data["videos"]:
+        counts[video["game_id"]] = counts.get(video["game_id"], 0) + 1
+
+    games: list[dict[str, object]] = []
+    for game in data["games"]:
+        game_with_count = dict(game)
+        game_with_count["video_count"] = counts.get(game["id"], 0)
+        games.append(game_with_count)
+    return games
 
 
 STYLE_CSS = """body {
@@ -120,6 +134,19 @@ a {
     border-color 140ms ease,
     box-shadow 140ms ease,
     background-color 140ms ease;
+}
+
+.game-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.game-count {
+  color: #667085;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .result.has-thumbnail {
@@ -185,6 +212,24 @@ a {
 .copy-link.copied {
   border-color: #5c946e;
   background: #eef8f1;
+}
+
+.copy-link.copied::after {
+  content: "Copied";
+  position: absolute;
+  left: 50%;
+  top: -28px;
+  transform: translateX(-50%);
+  padding: 4px 7px;
+  border-radius: 4px;
+  color: #fff;
+  background: #1f2937;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.copy-link {
+  position: relative;
 }
 
 .copy-link img {
@@ -271,6 +316,12 @@ select {
   gap: 10px;
 }
 
+.result-count {
+  margin-bottom: 10px;
+  color: #555;
+  font-size: 14px;
+}
+
 .meta {
   margin-top: 4px;
   color: #666;
@@ -347,6 +398,7 @@ APP_JS = """async function main() {
   const targetInput = document.getElementById("targetQuery");
   const sortInput = document.getElementById("sortMode");
   const results = document.getElementById("results");
+  const resultCount = document.getElementById("resultCount");
 
   function render() {
     const sourceQuery = sourceInput.value.trim().toLowerCase();
@@ -362,6 +414,7 @@ APP_JS = """async function main() {
       return sourceOk && targetOk;
     });
     sortVideos(videos, sortInput.value);
+    resultCount.textContent = `${videos.length} result${videos.length === 1 ? "" : "s"}`;
 
     results.innerHTML = "";
     if (videos.length === 0) {
@@ -411,6 +464,13 @@ APP_JS = """async function main() {
         const copied = await copyText(video.link);
         copyButton.setAttribute("aria-label", copied ? "Copied" : "Copy failed");
         copyButton.classList.toggle("copied", copied);
+        if (copied) {
+          window.clearTimeout(copyButton.copyResetTimer);
+          copyButton.copyResetTimer = window.setTimeout(() => {
+            copyButton.classList.remove("copied");
+            copyButton.setAttribute("aria-label", `Copy link for ${video.title}`);
+          }, 1400);
+        }
       });
       item.appendChild(copyButton);
 
