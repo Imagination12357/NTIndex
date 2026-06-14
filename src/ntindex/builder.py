@@ -399,6 +399,7 @@ APP_JS = """async function main() {
   const sortInput = document.getElementById("sortMode");
   const results = document.getElementById("results");
   const resultCount = document.getElementById("resultCount");
+  restoreStateFromUrl(sourceInput, targetInput, sortInput);
 
   function render() {
     const sourceQuery = sourceInput.value.trim().toLowerCase();
@@ -478,9 +479,18 @@ APP_JS = """async function main() {
     }
   }
 
-  sourceInput.addEventListener("input", render);
-  targetInput.addEventListener("input", render);
-  sortInput.addEventListener("change", render);
+  function renderAndUpdateUrl() {
+    updateUrlState(sourceInput, targetInput, sortInput);
+    render();
+  }
+
+  sourceInput.addEventListener("input", renderAndUpdateUrl);
+  targetInput.addEventListener("input", renderAndUpdateUrl);
+  sortInput.addEventListener("change", renderAndUpdateUrl);
+  window.addEventListener("popstate", () => {
+    restoreStateFromUrl(sourceInput, targetInput, sortInput);
+    render();
+  });
   render();
 }
 
@@ -492,6 +502,34 @@ function sortVideos(videos, mode) {
     const rightValue = String(right[field] || "").toLocaleLowerCase();
     return leftValue.localeCompare(rightValue) * factor;
   });
+}
+
+function restoreStateFromUrl(sourceInput, targetInput, sortInput) {
+  const params = new URLSearchParams(window.location.search);
+  sourceInput.value = params.get("source") || "";
+  targetInput.value = params.get("target") || "";
+  const sort = params.get("sort");
+  if (sort && Array.from(sortInput.options).some((option) => option.value === sort)) {
+    sortInput.value = sort;
+  }
+}
+
+function updateUrlState(sourceInput, targetInput, sortInput) {
+  const params = new URLSearchParams(window.location.search);
+  setOptionalParam(params, "source", sourceInput.value.trim());
+  setOptionalParam(params, "target", targetInput.value.trim());
+  setOptionalParam(params, "sort", sortInput.value === "title-asc" ? "" : sortInput.value);
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  window.history.replaceState(null, "", nextUrl);
+}
+
+function setOptionalParam(params, key, value) {
+  if (value) {
+    params.set(key, value);
+    return;
+  }
+  params.delete(key);
 }
 
 async function copyText(text) {
