@@ -23,6 +23,16 @@ class VideoInput:
     published_at: str | None = None
 
 
+@dataclass(frozen=True)
+class ParseFailureRecord:
+    link: str
+    title: str | None
+    source: str
+    reason: str
+    detail: str | None = None
+    published_at: str | None = None
+
+
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -80,6 +90,24 @@ def init_db(conn: sqlite3.Connection) -> None:
             source_id,
             target_id
         );
+
+        CREATE TABLE IF NOT EXISTS parse_failures (
+            id INTEGER PRIMARY KEY,
+
+            link TEXT NOT NULL UNIQUE,
+            title TEXT,
+            source TEXT NOT NULL,
+
+            reason TEXT NOT NULL,
+            detail TEXT,
+
+            published_at TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            seen_count INTEGER NOT NULL DEFAULT 1,
+
+            resolved_at TEXT
+        );
         """
     )
     _ensure_canonical_column(conn, "games")
@@ -94,12 +122,13 @@ def add_video(conn: sqlite3.Connection, video: VideoInput) -> bool:
     existed.
     """
     if _link_exists(conn, video.link):
+        resolve_parse_failure(conn, video.link)
         return False
 
     game_id = get_or_create_game(conn, video.game)
     source_id = get_or_create_character(conn, video.source, game_id)
     target_id = get_or_create_character(conn, video.target, game_id)
-    crawled_at = datetime.now(timezone.utc).isoformat()
+    crawled_at = _utc_now()
 
     conn.execute(
         """
@@ -125,6 +154,7 @@ def add_video(conn: sqlite3.Connection, video: VideoInput) -> bool:
         ),
     )
     conn.commit()
+    resolve_parse_failure(conn, video.link)
     return True
 
 
@@ -134,6 +164,70 @@ def add_videos(conn: sqlite3.Connection, videos: Iterable[VideoInput]) -> int:
         if add_video(conn, video):
             inserted += 1
     return inserted
+
+
+def record_parse_failures(
+    conn: sqlite3.Connection,
+    failures: Iterable[ParseFailureRecord],
+) -> int:
+    recorded = 0
+    now = _utc_now()
+    for failure in failures:
+        if _link_exists(conn, failure.link):
+            resolve_parse_failure(conn, failure.link)
+            continue
+
+        conn.execute(
+            """
+            INSERT INTO parse_failures (
+                link,
+                title,
+                source,
+                reason,
+                detail,
+                published_at,
+                first_seen_at,
+                last_seen_at,
+                seen_count,
+                resolved_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL)
+            ON CONFLICT(link) DO UPDATE SET
+                title = excluded.title,
+                source = excluded.source,
+                reason = excluded.reason,
+                detail = excluded.detail,
+                published_at = excluded.published_at,
+                last_seen_at = excluded.last_seen_at,
+                seen_count = parse_failures.seen_count + 1,
+                resolved_at = NULL
+            """,
+            (
+                failure.link,
+                failure.title,
+                failure.source,
+                failure.reason,
+                failure.detail,
+                failure.published_at,
+                now,
+                now,
+            ),
+        )
+        recorded += 1
+    conn.commit()
+    return recorded
+
+
+def resolve_parse_failure(conn: sqlite3.Connection, link: str) -> None:
+    conn.execute(
+        """
+        UPDATE parse_failures
+        SET resolved_at = ?
+        WHERE link = ? AND resolved_at IS NULL
+        """,
+        (_utc_now(), link),
+    )
+    conn.commit()
 
 
 def get_or_create_game(conn: sqlite3.Connection, name: str) -> int:
@@ -318,6 +412,10 @@ def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object
 def _link_exists(conn: sqlite3.Connection, link: str) -> bool:
     row = conn.execute("SELECT 1 FROM videos WHERE link = ?", (link,)).fetchone()
     return row is not None
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _require_row(conn: sqlite3.Connection, table: str, row_id: int) -> sqlite3.Row:

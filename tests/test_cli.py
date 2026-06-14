@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 
+from ntindex.crawler import CrawlResult
+
 
 def test_cli_crawl_and_build_with_example_input(tmp_path):
     db_path = tmp_path / "ntindex.sqlite3"
@@ -25,6 +27,7 @@ def test_cli_crawl_and_build_with_example_input(tmp_path):
 
     assert crawl.returncode == 0
     assert "inserted 2 video(s)" in crawl.stdout
+    assert "recorded 1 parse failure(s)" in crawl.stdout
     assert "skipped: item 4: title did not match pattern" in crawl.stderr
 
     build = subprocess.run(
@@ -79,6 +82,7 @@ def test_cli_update_runs_crawl_then_build(tmp_path):
 
     assert result.returncode == 0
     assert "inserted 2 video(s)" in result.stdout
+    assert "recorded 1 parse failure(s)" in result.stdout
     assert f"built {out_dir}" in result.stdout
     assert (out_dir / "search.json").exists()
 
@@ -88,9 +92,9 @@ def test_cli_crawl_uses_default_channel_id(monkeypatch, tmp_path):
 
     def fake_load(channel_id):
         calls.append(channel_id)
-        return [], []
+        return CrawlResult(videos=[], failures=[], skipped=[])
 
-    monkeypatch.setattr("ntindex.cli.load_videos_from_ytdlp_channel", fake_load)
+    monkeypatch.setattr("ntindex.cli.load_crawl_result_from_ytdlp_channel", fake_load)
 
     from ntindex.cli import main
 
@@ -105,9 +109,9 @@ def test_cli_crawl_recent_uses_rss_channel_id(monkeypatch, tmp_path):
 
     def fake_load(channel_id):
         calls.append(channel_id)
-        return [], []
+        return CrawlResult(videos=[], failures=[], skipped=[])
 
-    monkeypatch.setattr("ntindex.cli.load_videos_from_youtube_channel", fake_load)
+    monkeypatch.setattr("ntindex.cli.load_crawl_result_from_youtube_channel", fake_load)
 
     from ntindex.cli import main
 

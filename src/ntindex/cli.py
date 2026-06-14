@@ -8,13 +8,21 @@ import sys
 
 from ntindex.builder import build_site
 from ntindex.crawler import (
-    load_videos_from_feed_url,
-    load_videos_from_json,
-    load_videos_from_youtube_channel,
-    load_videos_from_ytdlp_channel,
-    load_videos_from_ytdlp_url,
+    load_crawl_result_from_feed_url,
+    load_crawl_result_from_json,
+    load_crawl_result_from_youtube_channel,
+    load_crawl_result_from_ytdlp_channel,
+    load_crawl_result_from_ytdlp_url,
 )
-from ntindex.db import add_videos, connect, init_db, merge_character, merge_game
+from ntindex.db import (
+    ParseFailureRecord,
+    add_videos,
+    connect,
+    init_db,
+    merge_character,
+    merge_game,
+    record_parse_failures,
+)
 
 
 DEFAULT_DB = "ntindex.sqlite3"
@@ -107,25 +115,38 @@ def _add_dist_arg(parser: argparse.ArgumentParser) -> None:
 def _crawl(args: argparse.Namespace) -> int:
     conn = connect(args.db)
     init_db(conn)
-    videos, skipped = _load_crawl_source(args)
-    inserted = add_videos(conn, videos)
+    result = _load_crawl_source(args)
+    inserted = add_videos(conn, result.videos)
+    failures = [
+        ParseFailureRecord(
+            link=failure.link,
+            title=failure.title,
+            source=failure.source,
+            reason=failure.reason,
+            detail=failure.detail,
+            published_at=failure.published_at,
+        )
+        for failure in result.failures
+    ]
+    recorded_failures = record_parse_failures(conn, failures)
     print(f"inserted {inserted} video(s)")
-    for message in skipped:
+    print(f"recorded {recorded_failures} parse failure(s)")
+    for message in result.skipped:
         print(f"skipped: {message}", file=sys.stderr)
     return 0
 
 
 def _load_crawl_source(args: argparse.Namespace):
     if args.input is not None:
-        return load_videos_from_json(args.input)
+        return load_crawl_result_from_json(args.input)
     if args.feed_url:
-        return load_videos_from_feed_url(args.feed_url)
+        return load_crawl_result_from_feed_url(args.feed_url)
     if args.channel_url:
-        return load_videos_from_ytdlp_url(args.channel_url)
+        return load_crawl_result_from_ytdlp_url(args.channel_url)
     if args.recent:
-        return load_videos_from_youtube_channel(args.channel_id)
+        return load_crawl_result_from_youtube_channel(args.channel_id)
     if args.channel_id:
-        return load_videos_from_ytdlp_channel(args.channel_id)
+        return load_crawl_result_from_ytdlp_channel(args.channel_id)
     raise ValueError("crawl source is required")
 
 

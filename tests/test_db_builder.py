@@ -2,6 +2,7 @@ import json
 
 from ntindex.builder import build_site
 from ntindex.db import (
+    ParseFailureRecord,
     VideoInput,
     add_video,
     connect,
@@ -9,6 +10,7 @@ from ntindex.db import (
     init_db,
     merge_character,
     merge_game,
+    record_parse_failures,
     youtube_thumbnail_url,
     youtube_video_id,
 )
@@ -178,3 +180,62 @@ def test_youtube_thumbnail_url_extracts_video_id():
         youtube_thumbnail_url("https://www.youtube.com/watch?v=abc123")
         == "https://img.youtube.com/vi/abc123/0.jpg"
     )
+
+
+def test_record_parse_failures_upserts_by_link(tmp_path):
+    conn = connect(str(tmp_path / "ntindex.sqlite3"))
+    init_db(conn)
+    failure = ParseFailureRecord(
+        link="https://example.test/bad",
+        title="Bad title",
+        source="json",
+        reason="title_not_matched",
+        detail="title did not match pattern",
+        published_at="2026-01-01T00:00:00Z",
+    )
+
+    assert record_parse_failures(conn, [failure]) == 1
+    assert record_parse_failures(conn, [failure]) == 1
+
+    row = conn.execute(
+        "SELECT link, title, source, reason, seen_count, resolved_at FROM parse_failures"
+    ).fetchone()
+    assert dict(row) == {
+        "link": "https://example.test/bad",
+        "title": "Bad title",
+        "source": "json",
+        "reason": "title_not_matched",
+        "seen_count": 2,
+        "resolved_at": None,
+    }
+
+
+def test_add_video_resolves_existing_parse_failure(tmp_path):
+    conn = connect(str(tmp_path / "ntindex.sqlite3"))
+    init_db(conn)
+    link = "https://example.test/video"
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link=link,
+                title="Bad title",
+                source="json",
+                reason="title_not_matched",
+            )
+        ],
+    )
+
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Impact Model Swap",
+            link=link,
+            source="Furina",
+            target="Nahida",
+            game="Genshin Impact",
+        ),
+    )
+
+    row = conn.execute("SELECT resolved_at FROM parse_failures WHERE link = ?", (link,)).fetchone()
+    assert row["resolved_at"] is not None

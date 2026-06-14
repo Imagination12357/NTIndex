@@ -6,6 +6,7 @@ build behavior can be developed without a YouTube API dependency.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,29 @@ ATOM_NS = "{http://www.w3.org/2005/Atom}"
 YT_NS = "{http://www.youtube.com/xml/schemas/2015}"
 
 
+@dataclass(frozen=True)
+class ParseFailureInput:
+    link: str
+    title: str | None
+    source: str
+    reason: str
+    detail: str | None = None
+    published_at: str | None = None
+
+
+@dataclass(frozen=True)
+class CrawlResult:
+    videos: list[VideoInput]
+    failures: list[ParseFailureInput]
+    skipped: list[str]
+
+
 def load_videos_from_json(path: Path) -> tuple[list[VideoInput], list[str]]:
+    result = load_crawl_result_from_json(path)
+    return result.videos, result.skipped
+
+
+def load_crawl_result_from_json(path: Path) -> CrawlResult:
     """Load videos from a JSON file.
 
     Expected item shape:
@@ -33,6 +56,7 @@ def load_videos_from_json(path: Path) -> tuple[list[VideoInput], list[str]]:
         raise ValueError("crawl input must be a JSON array")
 
     videos: list[VideoInput] = []
+    failures: list[ParseFailureInput] = []
     skipped: list[str] = []
 
     for index, item in enumerate(raw, start=1):
@@ -44,11 +68,32 @@ def load_videos_from_json(path: Path) -> tuple[list[VideoInput], list[str]]:
         link = _string_value(item, "link")
         if not title or not link:
             skipped.append(f"item {index}: missing title or link")
+            if link:
+                failures.append(
+                    ParseFailureInput(
+                        link=link,
+                        title=title,
+                        source="json",
+                        reason="missing_title",
+                        detail=f"item {index}: missing title or link",
+                        published_at=_string_value(item, "published_at"),
+                    )
+                )
             continue
 
         parsed = parse_title(title)
         if parsed is None:
             skipped.append(f"item {index}: title did not match pattern")
+            failures.append(
+                ParseFailureInput(
+                    link=link,
+                    title=title,
+                    source="json",
+                    reason="title_not_matched",
+                    detail=f"item {index}: title did not match pattern",
+                    published_at=_string_value(item, "published_at"),
+                )
+            )
             continue
 
         videos.append(
@@ -62,7 +107,7 @@ def load_videos_from_json(path: Path) -> tuple[list[VideoInput], list[str]]:
             )
         )
 
-    return videos, skipped
+    return CrawlResult(videos=videos, failures=failures, skipped=skipped)
 
 
 def load_videos_from_youtube_channel(channel_id: str) -> tuple[list[VideoInput], list[str]]:
@@ -70,11 +115,25 @@ def load_videos_from_youtube_channel(channel_id: str) -> tuple[list[VideoInput],
     return load_videos_from_feed_url(url)
 
 
+def load_crawl_result_from_youtube_channel(channel_id: str) -> CrawlResult:
+    url = f"{YOUTUBE_FEED_URL}?{urlencode({'channel_id': channel_id})}"
+    return load_crawl_result_from_feed_url(url)
+
+
 def load_videos_from_ytdlp_channel(channel_id: str) -> tuple[list[VideoInput], list[str]]:
     return load_videos_from_ytdlp_url(YOUTUBE_CHANNEL_URL.format(channel_id=channel_id))
 
 
+def load_crawl_result_from_ytdlp_channel(channel_id: str) -> CrawlResult:
+    return load_crawl_result_from_ytdlp_url(YOUTUBE_CHANNEL_URL.format(channel_id=channel_id))
+
+
 def load_videos_from_ytdlp_url(url: str) -> tuple[list[VideoInput], list[str]]:
+    result = load_crawl_result_from_ytdlp_url(url)
+    return result.videos, result.skipped
+
+
+def load_crawl_result_from_ytdlp_url(url: str) -> CrawlResult:
     from yt_dlp import YoutubeDL
 
     options = {
@@ -90,6 +149,7 @@ def load_videos_from_ytdlp_url(url: str) -> tuple[list[VideoInput], list[str]]:
         raise ValueError("yt-dlp result did not contain a video list")
 
     videos: list[VideoInput] = []
+    failures: list[ParseFailureInput] = []
     skipped: list[str] = []
     for index, entry in enumerate(entries, start=1):
         if not isinstance(entry, dict):
@@ -102,11 +162,32 @@ def load_videos_from_ytdlp_url(url: str) -> tuple[list[VideoInput], list[str]]:
 
         if not title or not link:
             skipped.append(f"yt-dlp entry {index}: missing title or link")
+            if link:
+                failures.append(
+                    ParseFailureInput(
+                        link=link,
+                        title=title,
+                        source="yt-dlp",
+                        reason="missing_title",
+                        detail=f"yt-dlp entry {index}: missing title or link",
+                        published_at=published_at,
+                    )
+                )
             continue
 
         parsed = parse_title(title)
         if parsed is None:
             skipped.append(f"yt-dlp entry {index}: title did not match pattern")
+            failures.append(
+                ParseFailureInput(
+                    link=link,
+                    title=title,
+                    source="yt-dlp",
+                    reason="title_not_matched",
+                    detail=f"yt-dlp entry {index}: title did not match pattern",
+                    published_at=published_at,
+                )
+            )
             continue
 
         videos.append(
@@ -120,18 +201,29 @@ def load_videos_from_ytdlp_url(url: str) -> tuple[list[VideoInput], list[str]]:
             )
         )
 
-    return videos, skipped
+    return CrawlResult(videos=videos, failures=failures, skipped=skipped)
 
 
 def load_videos_from_feed_url(url: str) -> tuple[list[VideoInput], list[str]]:
+    result = load_crawl_result_from_feed_url(url)
+    return result.videos, result.skipped
+
+
+def load_crawl_result_from_feed_url(url: str) -> CrawlResult:
     with urlopen(url, timeout=30) as response:
         xml_text = response.read().decode("utf-8")
-    return load_videos_from_feed_xml(xml_text)
+    return load_crawl_result_from_feed_xml(xml_text)
 
 
 def load_videos_from_feed_xml(xml_text: str) -> tuple[list[VideoInput], list[str]]:
+    result = load_crawl_result_from_feed_xml(xml_text)
+    return result.videos, result.skipped
+
+
+def load_crawl_result_from_feed_xml(xml_text: str) -> CrawlResult:
     root = ET.fromstring(xml_text)
     videos: list[VideoInput] = []
+    failures: list[ParseFailureInput] = []
     skipped: list[str] = []
 
     for index, entry in enumerate(root.findall(f"{ATOM_NS}entry"), start=1):
@@ -142,11 +234,32 @@ def load_videos_from_feed_xml(xml_text: str) -> tuple[list[VideoInput], list[str
 
         if not title or not link:
             skipped.append(f"feed entry {index}: missing title or link")
+            if link:
+                failures.append(
+                    ParseFailureInput(
+                        link=link,
+                        title=title,
+                        source="rss",
+                        reason="missing_title",
+                        detail=f"feed entry {index}: missing title or link",
+                        published_at=published_at,
+                    )
+                )
             continue
 
         parsed = parse_title(title)
         if parsed is None:
             skipped.append(f"feed entry {index}: title did not match pattern")
+            failures.append(
+                ParseFailureInput(
+                    link=link,
+                    title=title,
+                    source="rss",
+                    reason="title_not_matched",
+                    detail=f"feed entry {index}: title did not match pattern",
+                    published_at=published_at,
+                )
+            )
             continue
 
         videos.append(
@@ -160,7 +273,7 @@ def load_videos_from_feed_xml(xml_text: str) -> tuple[list[VideoInput], list[str
             )
         )
 
-    return videos, skipped
+    return CrawlResult(videos=videos, failures=failures, skipped=skipped)
 
 
 def _string_value(item: dict[str, Any], key: str) -> str | None:
