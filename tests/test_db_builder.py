@@ -10,6 +10,8 @@ from ntindex.db import (
     init_db,
     merge_character,
     merge_game,
+    preview_merge_character,
+    preview_merge_game,
     record_parse_failures,
     youtube_thumbnail_url,
     youtube_video_id,
@@ -111,6 +113,9 @@ def test_merge_game_keeps_rows_and_uses_canonical_game_for_build(tmp_path):
 
     old_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin'").fetchone()[0]
     new_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin Impact'").fetchone()[0]
+    preview = preview_merge_game(conn, old_id, new_id)
+    assert preview.video_game_updates == 1
+    assert preview.alias_rows_updated == 1
 
     merge_game(conn, old_id, new_id)
 
@@ -152,6 +157,10 @@ def test_merge_character_keeps_alias_names_searchable(tmp_path):
         "SELECT id FROM characters WHERE name = 'Lesser Lord Kusanali'"
     ).fetchone()[0]
     new_id = conn.execute("SELECT id FROM characters WHERE name = 'Nahida'").fetchone()[0]
+    preview = preview_merge_character(conn, old_id, new_id)
+    assert preview.video_source_updates == 1
+    assert preview.video_target_updates == 0
+    assert preview.alias_rows_updated == 1
 
     merge_character(conn, old_id, new_id)
 

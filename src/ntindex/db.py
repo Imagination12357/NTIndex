@@ -33,6 +33,21 @@ class ParseFailureRecord:
     published_at: str | None = None
 
 
+@dataclass(frozen=True)
+class MergePreview:
+    kind: str
+    old_id: int
+    old_name: str
+    new_id: int
+    new_name: str
+    old_canonical_id: int
+    new_canonical_id: int
+    video_game_updates: int = 0
+    video_source_updates: int = 0
+    video_target_updates: int = 0
+    alias_rows_updated: int = 0
+
+
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -265,10 +280,7 @@ def get_or_create_character(conn: sqlite3.Connection, name: str, game_id: int) -
 def merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
     if old_id == new_id:
         raise ValueError("old_id and new_id must be different")
-    old_row = _require_row(conn, "games", old_id)
-    new_row = _require_row(conn, "games", new_id)
-    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
-    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
+    preview = preview_merge_game(conn, old_id, new_id)
 
     with conn:
         conn.execute(
@@ -281,7 +293,7 @@ def merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
                 WHERE id = ? OR canonical_id = ?
             )
             """,
-            (new_canonical_id, old_id, old_canonical_id),
+            (preview.new_canonical_id, old_id, preview.old_canonical_id),
         )
         conn.execute(
             """
@@ -289,23 +301,14 @@ def merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
             SET canonical_id = ?
             WHERE id = ? OR canonical_id = ?
             """,
-            (new_canonical_id, old_id, old_canonical_id),
+            (preview.new_canonical_id, old_id, preview.old_canonical_id),
         )
 
 
 def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
     if old_id == new_id:
         raise ValueError("old_id and new_id must be different")
-
-    old_row = _require_row(conn, "characters", old_id)
-    new_row = _require_row(conn, "characters", new_id)
-    old_game_id = _canonical_game_id(conn, int(old_row["game_id"]))
-    new_game_id = _canonical_game_id(conn, int(new_row["game_id"]))
-    if old_game_id != new_game_id:
-        raise ValueError("characters must belong to the same canonical game")
-
-    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
-    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
+    preview = preview_merge_character(conn, old_id, new_id)
 
     with conn:
         conn.execute(
@@ -318,7 +321,7 @@ def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
                 WHERE id = ? OR canonical_id = ?
             )
             """,
-            (new_canonical_id, old_id, old_canonical_id),
+            (preview.new_canonical_id, old_id, preview.old_canonical_id),
         )
         conn.execute(
             """
@@ -330,7 +333,7 @@ def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
                 WHERE id = ? OR canonical_id = ?
             )
             """,
-            (new_canonical_id, old_id, old_canonical_id),
+            (preview.new_canonical_id, old_id, preview.old_canonical_id),
         )
         conn.execute(
             """
@@ -338,8 +341,117 @@ def merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> None:
             SET canonical_id = ?
             WHERE id = ? OR canonical_id = ?
             """,
-            (new_canonical_id, old_id, old_canonical_id),
+            (preview.new_canonical_id, old_id, preview.old_canonical_id),
         )
+
+
+def preview_merge_game(conn: sqlite3.Connection, old_id: int, new_id: int) -> MergePreview:
+    if old_id == new_id:
+        raise ValueError("old_id and new_id must be different")
+    old_row = _require_row(conn, "games", old_id)
+    new_row = _require_row(conn, "games", new_id)
+    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
+    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
+    video_game_updates = _count_rows(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM videos
+        WHERE game_id IN (
+            SELECT id
+            FROM games
+            WHERE id = ? OR canonical_id = ?
+        )
+        AND game_id != ?
+        """,
+        (old_id, old_canonical_id, new_canonical_id),
+    )
+    alias_rows_updated = _count_rows(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM games
+        WHERE (id = ? OR canonical_id = ?)
+        AND canonical_id != ?
+        """,
+        (old_id, old_canonical_id, new_canonical_id),
+    )
+    return MergePreview(
+        kind="game",
+        old_id=old_id,
+        old_name=str(old_row["name"]),
+        new_id=new_id,
+        new_name=str(new_row["name"]),
+        old_canonical_id=old_canonical_id,
+        new_canonical_id=new_canonical_id,
+        video_game_updates=video_game_updates,
+        alias_rows_updated=alias_rows_updated,
+    )
+
+
+def preview_merge_character(conn: sqlite3.Connection, old_id: int, new_id: int) -> MergePreview:
+    if old_id == new_id:
+        raise ValueError("old_id and new_id must be different")
+
+    old_row = _require_row(conn, "characters", old_id)
+    new_row = _require_row(conn, "characters", new_id)
+    old_game_id = _canonical_game_id(conn, int(old_row["game_id"]))
+    new_game_id = _canonical_game_id(conn, int(new_row["game_id"]))
+    if old_game_id != new_game_id:
+        raise ValueError("characters must belong to the same canonical game")
+
+    old_canonical_id = int(old_row["canonical_id"] or old_row["id"])
+    new_canonical_id = int(new_row["canonical_id"] or new_row["id"])
+    video_source_updates = _count_rows(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM videos
+        WHERE source_id IN (
+            SELECT id
+            FROM characters
+            WHERE id = ? OR canonical_id = ?
+        )
+        AND source_id != ?
+        """,
+        (old_id, old_canonical_id, new_canonical_id),
+    )
+    video_target_updates = _count_rows(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM videos
+        WHERE target_id IN (
+            SELECT id
+            FROM characters
+            WHERE id = ? OR canonical_id = ?
+        )
+        AND target_id != ?
+        """,
+        (old_id, old_canonical_id, new_canonical_id),
+    )
+    alias_rows_updated = _count_rows(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM characters
+        WHERE (id = ? OR canonical_id = ?)
+        AND canonical_id != ?
+        """,
+        (old_id, old_canonical_id, new_canonical_id),
+    )
+    return MergePreview(
+        kind="character",
+        old_id=old_id,
+        old_name=str(old_row["name"]),
+        new_id=new_id,
+        new_name=str(new_row["name"]),
+        old_canonical_id=old_canonical_id,
+        new_canonical_id=new_canonical_id,
+        video_source_updates=video_source_updates,
+        video_target_updates=video_target_updates,
+        alias_rows_updated=alias_rows_updated,
+    )
 
 
 def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object]]]:
@@ -412,6 +524,11 @@ def fetch_site_data(conn: sqlite3.Connection) -> dict[str, list[dict[str, object
 def _link_exists(conn: sqlite3.Connection, link: str) -> bool:
     row = conn.execute("SELECT 1 FROM videos WHERE link = ?", (link,)).fetchone()
     return row is not None
+
+
+def _count_rows(conn: sqlite3.Connection, query: str, params: tuple[object, ...]) -> int:
+    row = conn.execute(query, params).fetchone()
+    return int(row[0])
 
 
 def _utc_now() -> str:

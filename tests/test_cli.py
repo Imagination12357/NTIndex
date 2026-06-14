@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 from ntindex.crawler import CrawlResult
+from ntindex.db import VideoInput, add_video, connect, init_db
 
 
 def test_cli_crawl_and_build_with_example_input(tmp_path):
@@ -119,3 +120,80 @@ def test_cli_crawl_recent_uses_rss_channel_id(monkeypatch, tmp_path):
 
     assert result == 0
     assert calls == ["UCI4No3r3X66tSQbVgXse_MA"]
+
+
+def test_cli_merge_requires_confirmation_by_default(monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "ntindex.sqlite3"
+    conn = connect(str(db_path))
+    init_db(conn)
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Impact Model Swap",
+            link="https://example.test/genshin-impact",
+            source="Furina",
+            target="Nahida",
+            game="Genshin Impact",
+        ),
+    )
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Model Swap",
+            link="https://example.test/genshin",
+            source="Furina",
+            target="Nahida",
+            game="Genshin",
+        ),
+    )
+    old_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin'").fetchone()[0]
+    new_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin Impact'").fetchone()[0]
+    conn.close()
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(db_path), "merge", "game", str(old_id), str(new_id)])
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert "Proceed? [y/N]:" not in output
+    assert "aborted" in output
+
+
+def test_cli_merge_yes_skips_confirmation(tmp_path, capsys):
+    db_path = tmp_path / "ntindex.sqlite3"
+    conn = connect(str(db_path))
+    init_db(conn)
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Impact Model Swap",
+            link="https://example.test/genshin-impact",
+            source="Furina",
+            target="Nahida",
+            game="Genshin Impact",
+        ),
+    )
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Model Swap",
+            link="https://example.test/genshin",
+            source="Furina",
+            target="Nahida",
+            game="Genshin",
+        ),
+    )
+    old_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin'").fetchone()[0]
+    new_id = conn.execute("SELECT id FROM games WHERE name = 'Genshin Impact'").fetchone()[0]
+    conn.close()
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(db_path), "merge", "--yes", "game", str(old_id), str(new_id)])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "videos.game_id updated: 1" in output
+    assert f"merged game {old_id} -> {new_id}" in output

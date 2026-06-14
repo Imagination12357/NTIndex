@@ -21,6 +21,8 @@ from ntindex.db import (
     init_db,
     merge_character,
     merge_game,
+    preview_merge_character,
+    preview_merge_game,
     record_parse_failures,
 )
 
@@ -71,6 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_dist_arg(update)
 
     merge = subparsers.add_parser("merge", help="merge duplicate records")
+    merge.add_argument("--yes", action="store_true", help="skip confirmation prompt")
     merge_subparsers = merge.add_subparsers(dest="merge_kind", required=True)
 
     merge_game_parser = merge_subparsers.add_parser("game", help="merge games")
@@ -162,13 +165,45 @@ def _merge(args: argparse.Namespace) -> int:
     conn = connect(args.db)
     init_db(conn)
     if args.merge_kind == "game":
+        preview = preview_merge_game(conn, args.old_id, args.new_id)
+        _print_merge_preview(preview)
+        if not args.yes and not _confirm_merge():
+            print("aborted")
+            return 1
         merge_game(conn, args.old_id, args.new_id)
     elif args.merge_kind == "character":
+        preview = preview_merge_character(conn, args.old_id, args.new_id)
+        _print_merge_preview(preview)
+        if not args.yes and not _confirm_merge():
+            print("aborted")
+            return 1
         merge_character(conn, args.old_id, args.new_id)
     else:
         raise ValueError(f"unsupported merge kind: {args.merge_kind}")
     print(f"merged {args.merge_kind} {args.old_id} -> {args.new_id}")
     return 0
+
+
+def _print_merge_preview(preview) -> None:
+    print(f"Merge {preview.kind} {preview.old_id} -> {preview.new_id}")
+    print("")
+    print("Old:")
+    print(f"  {preview.old_id}  {preview.old_name}  canonical={preview.old_canonical_id}")
+    print("New:")
+    print(f"  {preview.new_id}  {preview.new_name}  canonical={preview.new_canonical_id}")
+    print("")
+    print("Changes:")
+    if preview.kind == "game":
+        print(f"  videos.game_id updated: {preview.video_game_updates}")
+    else:
+        print(f"  videos.source_id updated: {preview.video_source_updates}")
+        print(f"  videos.target_id updated: {preview.video_target_updates}")
+    print(f"  alias rows updated: {preview.alias_rows_updated}")
+
+
+def _confirm_merge() -> bool:
+    answer = input("Proceed? [y/N]: ").strip().lower()
+    return answer in {"y", "yes"}
 
 
 if __name__ == "__main__":

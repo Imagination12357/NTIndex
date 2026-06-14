@@ -133,6 +133,7 @@ uv run ntindex update --dist public
 ## Merge
 
 Merge commands use canonical IDs. Rows are not deleted.
+Before applying changes, merge commands print a summary and ask for confirmation.
 
 - `id` identifies the actual stored row.
 - `canonical_id` identifies the representative row used for search and build output.
@@ -162,6 +163,12 @@ uv run ntindex merge game 12 3
 
 This makes game `12` resolve to the same canonical game as `3`.
 
+Skip the confirmation prompt:
+
+```powershell
+uv run ntindex merge --yes game 12 3
+```
+
 ### Merge Characters
 
 ```powershell
@@ -175,6 +182,12 @@ uv run ntindex merge character 51 8
 ```
 
 Characters can be merged only when they belong to the same canonical game.
+
+Skip the confirmation prompt:
+
+```powershell
+uv run ntindex merge --yes character 51 8
+```
 
 Merged names remain searchable through `search.json` alias fields:
 
