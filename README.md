@@ -194,6 +194,35 @@ Merged names remain searchable through `search.json` alias fields:
 - `source_names`
 - `target_names`
 
+## Parse Failures
+
+NTIndex records titles that were crawled but could not be parsed into the
+`A as B | Game Model Swap` shape.
+
+List unresolved parse failures:
+
+```powershell
+uv run ntindex failures list
+```
+
+Include resolved failures:
+
+```powershell
+uv run ntindex failures list --all
+```
+
+Limit the number of rows:
+
+```powershell
+uv run ntindex failures list --limit 20
+```
+
+Output JSON:
+
+```powershell
+uv run ntindex failures list --json
+```
+
 ## Development
 
 Run tests:

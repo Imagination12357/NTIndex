@@ -48,6 +48,21 @@ class MergePreview:
     alias_rows_updated: int = 0
 
 
+@dataclass(frozen=True)
+class ParseFailureListItem:
+    id: int
+    link: str
+    title: str | None
+    source: str
+    reason: str
+    detail: str | None
+    published_at: str | None
+    first_seen_at: str
+    last_seen_at: str
+    seen_count: int
+    resolved_at: str | None
+
+
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -243,6 +258,52 @@ def resolve_parse_failure(conn: sqlite3.Connection, link: str) -> None:
         (_utc_now(), link),
     )
     conn.commit()
+
+
+def list_parse_failures(
+    conn: sqlite3.Connection,
+    *,
+    include_resolved: bool = False,
+    limit: int = 50,
+) -> list[ParseFailureListItem]:
+    where = "" if include_resolved else "WHERE resolved_at IS NULL"
+    rows = conn.execute(
+        f"""
+        SELECT
+            id,
+            link,
+            title,
+            source,
+            reason,
+            detail,
+            published_at,
+            first_seen_at,
+            last_seen_at,
+            seen_count,
+            resolved_at
+        FROM parse_failures
+        {where}
+        ORDER BY last_seen_at DESC, id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        ParseFailureListItem(
+            id=int(row["id"]),
+            link=str(row["link"]),
+            title=row["title"],
+            source=str(row["source"]),
+            reason=str(row["reason"]),
+            detail=row["detail"],
+            published_at=row["published_at"],
+            first_seen_at=str(row["first_seen_at"]),
+            last_seen_at=str(row["last_seen_at"]),
+            seen_count=int(row["seen_count"]),
+            resolved_at=row["resolved_at"],
+        )
+        for row in rows
+    ]
 
 
 def get_or_create_game(conn: sqlite3.Connection, name: str) -> int:

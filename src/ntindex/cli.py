@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
+import json
 from pathlib import Path
 import sys
 
@@ -19,6 +21,7 @@ from ntindex.db import (
     add_videos,
     connect,
     init_db,
+    list_parse_failures,
     merge_character,
     merge_game,
     preview_merge_character,
@@ -48,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
             return _build(args)
         if args.command == "merge":
             return _merge(args)
+        if args.command == "failures":
+            return _failures(args)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -83,6 +88,13 @@ def _build_parser() -> argparse.ArgumentParser:
     merge_character_parser = merge_subparsers.add_parser("character", help="merge characters")
     merge_character_parser.add_argument("old_id", type=int)
     merge_character_parser.add_argument("new_id", type=int)
+
+    failures = subparsers.add_parser("failures", help="inspect parse failures")
+    failures_subparsers = failures.add_subparsers(dest="failures_command", required=True)
+    failures_list = failures_subparsers.add_parser("list", help="list parse failures")
+    failures_list.add_argument("--all", action="store_true", help="include resolved failures")
+    failures_list.add_argument("--limit", type=int, default=50, help="maximum rows to show")
+    failures_list.add_argument("--json", action="store_true", help="output JSON")
 
     return parser
 
@@ -182,6 +194,41 @@ def _merge(args: argparse.Namespace) -> int:
         raise ValueError(f"unsupported merge kind: {args.merge_kind}")
     print(f"merged {args.merge_kind} {args.old_id} -> {args.new_id}")
     return 0
+
+
+def _failures(args: argparse.Namespace) -> int:
+    conn = connect(args.db)
+    init_db(conn)
+    if args.failures_command == "list":
+        failures = list_parse_failures(
+            conn,
+            include_resolved=args.all,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps([asdict(failure) for failure in failures], ensure_ascii=False, indent=2))
+            return 0
+        _print_failures(failures)
+        return 0
+    raise ValueError(f"unsupported failures command: {args.failures_command}")
+
+
+def _print_failures(failures) -> None:
+    if not failures:
+        print("No parse failures.")
+        return
+
+    for failure in failures:
+        status = "resolved" if failure.resolved_at else "unresolved"
+        title = failure.title or "(missing title)"
+        print(f"[{failure.id}] {status} {failure.reason} seen={failure.seen_count}")
+        print(f"  title: {title}")
+        print(f"  link:  {failure.link}")
+        print(f"  source: {failure.source}")
+        print(f"  last_seen_at: {failure.last_seen_at}")
+        if failure.detail:
+            print(f"  detail: {failure.detail}")
+        print("")
 
 
 def _print_merge_preview(preview) -> None:

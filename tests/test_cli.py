@@ -3,7 +3,14 @@ import subprocess
 import sys
 
 from ntindex.crawler import CrawlResult
-from ntindex.db import VideoInput, add_video, connect, init_db
+from ntindex.db import (
+    ParseFailureRecord,
+    VideoInput,
+    add_video,
+    connect,
+    init_db,
+    record_parse_failures,
+)
 
 
 def test_cli_crawl_and_build_with_example_input(tmp_path):
@@ -197,3 +204,56 @@ def test_cli_merge_yes_skips_confirmation(tmp_path, capsys):
     assert result == 0
     assert "videos.game_id updated: 1" in output
     assert f"merged game {old_id} -> {new_id}" in output
+
+
+def test_cli_failures_list_outputs_unresolved_failures(tmp_path, capsys):
+    db_path = tmp_path / "ntindex.sqlite3"
+    conn = connect(str(db_path))
+    init_db(conn)
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link="https://example.test/bad",
+                title="Bad title",
+                source="json",
+                reason="title_not_matched",
+            )
+        ],
+    )
+    conn.close()
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(db_path), "failures", "list"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "title_not_matched" in output
+    assert "https://example.test/bad" in output
+
+
+def test_cli_failures_list_json_outputs_json(tmp_path, capsys):
+    db_path = tmp_path / "ntindex.sqlite3"
+    conn = connect(str(db_path))
+    init_db(conn)
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link="https://example.test/bad",
+                title="Bad title",
+                source="json",
+                reason="title_not_matched",
+            )
+        ],
+    )
+    conn.close()
+
+    from ntindex.cli import main
+
+    result = main(["--db", str(db_path), "failures", "list", "--json"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert json.loads(output)[0]["link"] == "https://example.test/bad"

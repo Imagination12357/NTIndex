@@ -8,6 +8,7 @@ from ntindex.db import (
     connect,
     fetch_site_data,
     init_db,
+    list_parse_failures,
     merge_character,
     merge_game,
     preview_merge_character,
@@ -252,3 +253,44 @@ def test_add_video_resolves_existing_parse_failure(tmp_path):
 
     row = conn.execute("SELECT resolved_at FROM parse_failures WHERE link = ?", (link,)).fetchone()
     assert row["resolved_at"] is not None
+
+
+def test_list_parse_failures_excludes_resolved_by_default(tmp_path):
+    conn = connect(str(tmp_path / "ntindex.sqlite3"))
+    init_db(conn)
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link="https://example.test/unresolved",
+                title="Bad title",
+                source="json",
+                reason="title_not_matched",
+            ),
+            ParseFailureRecord(
+                link="https://example.test/resolved",
+                title="Old bad title",
+                source="json",
+                reason="title_not_matched",
+            ),
+        ],
+    )
+    add_video(
+        conn,
+        VideoInput(
+            title="Furina as Nahida | Genshin Impact Model Swap",
+            link="https://example.test/resolved",
+            source="Furina",
+            target="Nahida",
+            game="Genshin Impact",
+        ),
+    )
+
+    unresolved = list_parse_failures(conn)
+    all_failures = list_parse_failures(conn, include_resolved=True)
+
+    assert [failure.link for failure in unresolved] == ["https://example.test/unresolved"]
+    assert {failure.link for failure in all_failures} == {
+        "https://example.test/unresolved",
+        "https://example.test/resolved",
+    }
