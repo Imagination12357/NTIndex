@@ -326,6 +326,44 @@ select {
   font-size: 14px;
 }
 
+.autoComplete_wrapper {
+  display: block;
+  width: 100%;
+  position: relative;
+}
+
+.autoComplete_wrapper > input {
+  width: 100%;
+  background-image: none;
+}
+
+.autoComplete_wrapper > ul {
+  position: absolute;
+  z-index: 10;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.autoComplete_wrapper > ul > li {
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #171717;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.autoComplete_wrapper > ul > li:hover,
+.autoComplete_wrapper > ul > li[aria-selected="true"] {
+  background: #f4f5f7;
+}
+
 .meta {
   margin-top: 4px;
   color: #666;
@@ -504,6 +542,8 @@ APP_JS = """async function main() {
     restoreStateFromUrl(sourceInput, targetInput, sortInput);
     render();
   });
+  setupAutocomplete(data, gameId, sourceInput, renderAndUpdateUrl);
+  setupAutocomplete(data, gameId, targetInput, renderAndUpdateUrl);
   render();
 }
 
@@ -543,6 +583,50 @@ function setOptionalParam(params, key, value) {
     return;
   }
   params.delete(key);
+}
+
+function setupAutocomplete(data, gameId, input, onSelect) {
+  if (!window.autoComplete) {
+    return;
+  }
+
+  const suggestions = characterSuggestions(data, gameId);
+  if (suggestions.length === 0) {
+    return;
+  }
+
+  new autoComplete({
+    selector: `#${input.id}`,
+    data: {
+      src: suggestions,
+      cache: true,
+    },
+    resultsList: {
+      maxResults: 8,
+      tabSelect: true,
+    },
+    resultItem: {
+      highlight: true,
+    },
+    events: {
+      input: {
+        selection: (event) => {
+          input.value = event.detail.selection.value;
+          onSelect();
+        },
+      },
+    },
+  });
+}
+
+function characterSuggestions(data, gameId) {
+  const names = new Set();
+  for (const character of data.characters || []) {
+    if (character.game_id === gameId) {
+      names.add(character.name);
+    }
+  }
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
 }
 
 async function copyText(text) {
