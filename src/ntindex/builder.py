@@ -187,6 +187,10 @@ a {
   background: #e5e7eb;
 }
 
+.thumbnail.placeholder {
+  object-fit: cover;
+}
+
 .copy-link {
   width: 38px;
   height: 38px;
@@ -385,6 +389,7 @@ select {
 
 
 APP_JS = """async function main() {
+  const thumbnailPlaceholder = "https://img.youtube.com/vi/THUMBNAIL_PLACEHOLDER/0.jpg";
   const gameId = Number(document.body.dataset.gameId);
   if (!gameId) {
     return;
@@ -438,6 +443,14 @@ APP_JS = """async function main() {
         thumbnail.src = video.thumbnail_url;
         thumbnail.alt = "";
         thumbnail.loading = "lazy";
+        thumbnail.addEventListener("error", () => {
+          if (thumbnail.dataset.placeholder === "true") {
+            return;
+          }
+          thumbnail.dataset.placeholder = "true";
+          thumbnail.classList.add("placeholder");
+          thumbnail.src = thumbnailPlaceholder;
+        });
         link.appendChild(thumbnail);
       }
 
