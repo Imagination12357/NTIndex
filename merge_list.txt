@@ -1,0 +1,14 @@
+Don't trust IDs here. They can vary based on crawl timing. Instead, check names in the DB.
+
+Character
+
+al haitham -> alhaitham
+126 -> 116
+
+lyacon -> lycaon
+183 -> 25
+
+Ruan mei -> Ruan Mei
+59 -> 188
+
+Game
