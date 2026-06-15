@@ -14,6 +14,7 @@ from ntindex.db import (
     preview_merge_character,
     preview_merge_game,
     record_parse_failures,
+    review_parse_failure,
     youtube_thumbnail_url,
     youtube_video_id,
 )
@@ -295,3 +296,30 @@ def test_list_parse_failures_excludes_resolved_by_default(tmp_path):
         "https://example.test/unresolved",
         "https://example.test/resolved",
     }
+
+
+def test_review_parse_failure_sets_status_and_filter(tmp_path):
+    conn = connect(str(tmp_path / "ntindex.sqlite3"))
+    init_db(conn)
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link="https://example.test/ignored",
+                title="All Characters with Alice abilities (Female) | Zenless Zone Zero Model Swap",
+                source="yt-dlp",
+                reason="title_not_matched",
+            )
+        ],
+    )
+    failure_id = conn.execute("SELECT id FROM parse_failures").fetchone()[0]
+
+    review_parse_failure(conn, failure_id, "ignored", "outside current A as B model")
+
+    ignored = list_parse_failures(conn, review_status="ignored")
+    unreviewed = list_parse_failures(conn, review_status="unreviewed")
+
+    assert len(ignored) == 1
+    assert ignored[0].review_note == "outside current A as B model"
+    assert ignored[0].reviewed_at is not None
+    assert unreviewed == []

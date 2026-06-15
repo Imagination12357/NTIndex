@@ -18,6 +18,7 @@ from ntindex.crawler import (
 )
 from ntindex.db import (
     ParseFailureRecord,
+    VALID_REVIEW_STATUSES,
     add_videos,
     connect,
     init_db,
@@ -27,6 +28,7 @@ from ntindex.db import (
     preview_merge_character,
     preview_merge_game,
     record_parse_failures,
+    review_parse_failure,
 )
 
 
@@ -94,7 +96,16 @@ def _build_parser() -> argparse.ArgumentParser:
     failures_list = failures_subparsers.add_parser("list", help="list parse failures")
     failures_list.add_argument("--all", action="store_true", help="include resolved failures")
     failures_list.add_argument("--limit", type=int, default=50, help="maximum rows to show")
+    failures_list.add_argument(
+        "--status",
+        choices=sorted(VALID_REVIEW_STATUSES),
+        help="filter by review status",
+    )
     failures_list.add_argument("--json", action="store_true", help="output JSON")
+    failures_review = failures_subparsers.add_parser("review", help="set parse failure review status")
+    failures_review.add_argument("failure_id", type=int)
+    failures_review.add_argument("status", choices=sorted(VALID_REVIEW_STATUSES))
+    failures_review.add_argument("--note", help="optional review note")
 
     return parser
 
@@ -204,11 +215,16 @@ def _failures(args: argparse.Namespace) -> int:
             conn,
             include_resolved=args.all,
             limit=args.limit,
+            review_status=args.status,
         )
         if args.json:
             print(json.dumps([asdict(failure) for failure in failures], ensure_ascii=False, indent=2))
             return 0
         _print_failures(failures)
+        return 0
+    if args.failures_command == "review":
+        review_parse_failure(conn, args.failure_id, args.status, args.note)
+        print(f"reviewed parse failure {args.failure_id}: {args.status}")
         return 0
     raise ValueError(f"unsupported failures command: {args.failures_command}")
 
@@ -222,12 +238,15 @@ def _print_failures(failures) -> None:
         status = "resolved" if failure.resolved_at else "unresolved"
         title = failure.title or "(missing title)"
         print(f"[{failure.id}] {status} {failure.reason} seen={failure.seen_count}")
+        print(f"  review: {failure.review_status}")
         print(f"  title: {title}")
         print(f"  link:  {failure.link}")
         print(f"  source: {failure.source}")
         print(f"  last_seen_at: {failure.last_seen_at}")
         if failure.detail:
             print(f"  detail: {failure.detail}")
+        if failure.review_note:
+            print(f"  review_note: {failure.review_note}")
         print("")
 
 

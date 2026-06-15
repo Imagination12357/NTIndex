@@ -205,6 +205,14 @@ List unresolved parse failures:
 uv run ntindex failures list
 ```
 
+Filter by review status:
+
+```powershell
+uv run ntindex failures list --status unreviewed
+uv run ntindex failures list --status ignored
+uv run ntindex failures list --status needs_parser
+```
+
 Include resolved failures:
 
 ```powershell
@@ -222,6 +230,20 @@ Output JSON:
 ```powershell
 uv run ntindex failures list --json
 ```
+
+Set review status:
+
+```powershell
+uv run ntindex failures review <failure_id> ignored
+uv run ntindex failures review <failure_id> needs_parser --note "parser candidate"
+uv run ntindex failures review <failure_id> unreviewed
+```
+
+Review statuses:
+
+- `unreviewed`: not checked yet
+- `ignored`: intentionally outside the current `A as B` data model
+- `needs_parser`: likely worth supporting with parser changes
 
 ## Development
 

@@ -257,3 +257,50 @@ def test_cli_failures_list_json_outputs_json(tmp_path, capsys):
     output = capsys.readouterr().out
     assert result == 0
     assert json.loads(output)[0]["link"] == "https://example.test/bad"
+
+
+def test_cli_failures_review_sets_status(tmp_path, capsys):
+    db_path = tmp_path / "ntindex.sqlite3"
+    conn = connect(str(db_path))
+    init_db(conn)
+    record_parse_failures(
+        conn,
+        [
+            ParseFailureRecord(
+                link="https://example.test/bad",
+                title="Bad title",
+                source="json",
+                reason="title_not_matched",
+            )
+        ],
+    )
+    failure_id = conn.execute("SELECT id FROM parse_failures").fetchone()[0]
+    conn.close()
+
+    from ntindex.cli import main
+
+    result = main(
+        [
+            "--db",
+            str(db_path),
+            "failures",
+            "review",
+            str(failure_id),
+            "ignored",
+            "--note",
+            "outside current model",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert f"reviewed parse failure {failure_id}: ignored" in output
+
+    conn = connect(str(db_path))
+    row = conn.execute(
+        "SELECT review_status, review_note, reviewed_at FROM parse_failures WHERE id = ?",
+        (failure_id,),
+    ).fetchone()
+    assert row["review_status"] == "ignored"
+    assert row["review_note"] == "outside current model"
+    assert row["reviewed_at"] is not None

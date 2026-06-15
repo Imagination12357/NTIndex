@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 import sqlite3
 from urllib.parse import parse_qs, urlparse
 
+VALID_REVIEW_STATUSES = {"unreviewed", "ignored", "needs_parser"}
+
 
 @dataclass(frozen=True)
 class VideoInput:
@@ -61,6 +63,9 @@ class ParseFailureListItem:
     last_seen_at: str
     seen_count: int
     resolved_at: str | None
+    review_status: str
+    review_note: str | None
+    reviewed_at: str | None
 
 
 def connect(path: str) -> sqlite3.Connection:
@@ -142,6 +147,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     )
     _ensure_canonical_column(conn, "games")
     _ensure_canonical_column(conn, "characters")
+    _ensure_parse_failure_review_columns(conn)
     conn.commit()
 
 
@@ -265,8 +271,20 @@ def list_parse_failures(
     *,
     include_resolved: bool = False,
     limit: int = 50,
+    review_status: str | None = None,
 ) -> list[ParseFailureListItem]:
-    where = "" if include_resolved else "WHERE resolved_at IS NULL"
+    if review_status is not None:
+        _validate_review_status(review_status)
+
+    filters = []
+    params: list[object] = []
+    if not include_resolved:
+        filters.append("resolved_at IS NULL")
+    if review_status is not None:
+        filters.append("review_status = ?")
+        params.append(review_status)
+    where = f"WHERE {' AND '.join(filters)}" if filters else ""
+    params.append(limit)
     rows = conn.execute(
         f"""
         SELECT
@@ -280,13 +298,16 @@ def list_parse_failures(
             first_seen_at,
             last_seen_at,
             seen_count,
-            resolved_at
+            resolved_at,
+            review_status,
+            review_note,
+            reviewed_at
         FROM parse_failures
         {where}
         ORDER BY last_seen_at DESC, id DESC
         LIMIT ?
         """,
-        (limit,),
+        tuple(params),
     ).fetchall()
     return [
         ParseFailureListItem(
@@ -301,9 +322,35 @@ def list_parse_failures(
             last_seen_at=str(row["last_seen_at"]),
             seen_count=int(row["seen_count"]),
             resolved_at=row["resolved_at"],
+            review_status=str(row["review_status"]),
+            review_note=row["review_note"],
+            reviewed_at=row["reviewed_at"],
         )
         for row in rows
     ]
+
+
+def review_parse_failure(
+    conn: sqlite3.Connection,
+    failure_id: int,
+    status: str,
+    note: str | None = None,
+) -> None:
+    _validate_review_status(status)
+    reviewed_at = None if status == "unreviewed" else _utc_now()
+    cursor = conn.execute(
+        """
+        UPDATE parse_failures
+        SET review_status = ?,
+            review_note = ?,
+            reviewed_at = ?
+        WHERE id = ?
+        """,
+        (status, note, reviewed_at, failure_id),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"parse failure not found: {failure_id}")
+    conn.commit()
 
 
 def get_or_create_game(conn: sqlite3.Connection, name: str) -> int:
@@ -611,6 +658,27 @@ def _ensure_canonical_column(conn: sqlite3.Connection, table: str) -> None:
     if "canonical_id" not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN canonical_id INTEGER")
     conn.execute(f"UPDATE {table} SET canonical_id = id WHERE canonical_id IS NULL")
+
+
+def _ensure_parse_failure_review_columns(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(parse_failures)")
+    }
+    if "review_status" not in columns:
+        conn.execute(
+            "ALTER TABLE parse_failures ADD COLUMN review_status TEXT NOT NULL DEFAULT 'unreviewed'"
+        )
+    if "review_note" not in columns:
+        conn.execute("ALTER TABLE parse_failures ADD COLUMN review_note TEXT")
+    if "reviewed_at" not in columns:
+        conn.execute("ALTER TABLE parse_failures ADD COLUMN reviewed_at TEXT")
+
+
+def _validate_review_status(status: str) -> None:
+    if status not in VALID_REVIEW_STATUSES:
+        valid = ", ".join(sorted(VALID_REVIEW_STATUSES))
+        raise ValueError(f"invalid review status: {status}; expected one of {valid}")
 
 
 def _canonical_game_id(conn: sqlite3.Connection, game_id: int) -> int:
