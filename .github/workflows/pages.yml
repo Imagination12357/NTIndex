@@ -1,0 +1,96 @@
+name: Daily Pages Deploy
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:17 Asia/Seoul. GitHub Actions cron runs in UTC.
+    - cron: "17 18 * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v8
+
+      - name: Prepare paths
+        run: mkdir -p .ntindex dist report
+
+      - name: Record start time
+        run: echo "NTINDEX_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Update static site
+        id: update
+        continue-on-error: true
+        run: uv run ntindex --db .ntindex/ntindex.sqlite3 update --dist dist
+
+      - name: Upload Pages artifact
+        id: pages_artifact
+        if: steps.update.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist/
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        if: steps.update.outcome == 'success' && steps.pages_artifact.outcome == 'success'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Write run report
+        if: always()
+        run: |
+          finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if [ "${{ steps.update.outcome }}" = "success" ] \
+            && [ "${{ steps.pages_artifact.outcome }}" = "success" ] \
+            && [ "${{ steps.deploy.outcome }}" = "success" ]; then
+            status="pass"
+          else
+            status="fail"
+          fi
+
+          {
+            echo "status=${status}"
+            echo "started_at=${NTINDEX_STARTED_AT:-unknown}"
+            echo "finished_at=${finished_at}"
+            echo "command=uv run ntindex --db .ntindex/ntindex.sqlite3 update --dist dist"
+            echo "update=${{ steps.update.outcome }}"
+            echo "pages_artifact=${{ steps.pages_artifact.outcome }}"
+            echo "deploy=${{ steps.deploy.outcome }}"
+            echo "ref=${GITHUB_REF}"
+            echo "sha=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+          } > report/summary.txt
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntindex-run-report
+          path: report/
+          if-no-files-found: error
+
+      - name: Fail after report
+        if: steps.update.outcome != 'success' || steps.pages_artifact.outcome != 'success' || steps.deploy.outcome != 'success'
+        run: exit 1
