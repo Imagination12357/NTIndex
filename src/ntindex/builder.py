@@ -41,7 +41,7 @@ def build_site(conn, output_dir: Path) -> None:
     for game in games:
         slug = slugify(str(game["name"]))
         path = game_dir / f"{slug}.html"
-        path.write_text(game_template.render(game=game), encoding="utf-8")
+        path.write_text(game_template.render(game=game, slugify=slugify), encoding="utf-8")
 
 
 def slugify(value: str) -> str:

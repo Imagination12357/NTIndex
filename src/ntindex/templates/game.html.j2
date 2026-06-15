@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ game.name }} - NTIndex</title>
+  <meta name="description" content="Search {{ game.name }} NeonTeam model-swap videos by source and target character.">
+  <link rel="canonical" href="https://ntindex.kro.kr/game/{{ slugify(game.name) }}.html">
+  <meta property="og:title" content="{{ game.name }} Model-Swap Videos - NTIndex">
+  <meta property="og:description" content="Search {{ game.name }} NeonTeam model-swap videos by source and target character.">
+  <meta property="og:url" content="https://ntindex.kro.kr/game/{{ slugify(game.name) }}.html">
+  <meta property="og:type" content="website">
+  <title>{{ game.name }} Model-Swap Videos - NTIndex</title>
   <link rel="stylesheet" href="../style.css">
 </head>
 <body data-game-id="{{ game.id }}">
