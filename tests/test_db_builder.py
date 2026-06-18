@@ -60,9 +60,13 @@ def test_build_site_writes_search_json_and_game_page(tmp_path):
     data = json.loads((out / "search.json").read_text(encoding="utf-8"))
     assert data["videos"][0]["source"] == "Furina"
     assert "window.NTINDEX_DATA" in (out / "search.js").read_text(encoding="utf-8")
-    assert "1 videos" in (out / "index.html").read_text(encoding="utf-8")
+    index_html = (out / "index.html").read_text(encoding="utf-8")
+    assert "1 videos" in index_html
+    assert "&copy; 2026 Imagination12357" in index_html
+    assert "https://github.com/Imagination12357/NTIndex" in index_html
     game_html = (out / "game" / "genshin-impact.html").read_text(encoding="utf-8")
     assert 'id="resultCount"' in game_html
+    assert "MIT License" not in game_html
     assert "dist/autoComplete.min.js" in game_html
     assert "autoComplete.min.css" not in game_html
     assert (out / "index.html").exists()

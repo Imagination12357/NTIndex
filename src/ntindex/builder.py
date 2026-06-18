@@ -85,15 +85,19 @@ def _games_with_video_counts(data: dict[str, list[dict[str, object]]]) -> list[d
 
 STYLE_CSS = """body {
   margin: 0;
+  min-height: 100vh;
   font-family: Arial, sans-serif;
   color: #171717;
   background: #f4f5f7;
 }
 
 main {
+  min-height: calc(100vh - 64px);
   width: min(960px, calc(100% - 32px));
   margin: 0 auto;
   padding: 32px 0;
+  display: flex;
+  flex-direction: column;
   animation: page-in 180ms ease-out both;
 }
 
@@ -318,6 +322,35 @@ select {
 .results {
   display: grid;
   gap: 10px;
+}
+
+.site-footer {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: auto;
+  padding-top: 54px;
+  color: #667085;
+  font-size: 14px;
+}
+
+.site-footer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36px;
+  border-top: 1px solid #d9dde3;
+}
+
+.site-footer a {
+  color: #303846;
+  font-weight: 700;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
 }
 
 .result-count {
