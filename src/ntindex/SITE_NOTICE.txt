@@ -1,0 +1,56 @@
+NTIndex Site Notice
+===================
+
+NTIndex software
+----------------
+
+The NTIndex static site generator and NTIndex-authored components embedded in
+generated sites, including bundled templates, stylesheets, scripts, and default
+assets, are Copyright (c) 2026 Imagination12357 and licensed under the MIT
+License reproduced below.
+
+This SITE_NOTICE.txt file is associated documentation of NTIndex and is itself
+distributed under the same MIT License.
+
+Generated sites
+---------------
+
+Running NTIndex does not transfer copyright in NTIndex-authored components to
+the operator of a generated site. Site operators retain rights in their own
+content, branding, modifications, and database contributions, subject to any
+rights held by others.
+
+A generated site is not licensed as a single work solely because NTIndex was
+used to build it. The MIT License applies only to NTIndex-authored components
+included in the generated output.
+
+Third-party content
+-------------------
+
+NTIndex indexes and links to videos published by third parties. Rights to
+videos, thumbnails, game-related properties, and other third-party content
+remain with their respective holders. The MIT License does not grant any rights
+in that content.
+
+MIT License
+-----------
+
+Copyright (c) 2026 Imagination12357
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

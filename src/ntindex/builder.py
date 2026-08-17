@@ -12,11 +12,12 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from ntindex.db import fetch_site_data
 
 
-def build_site(conn, output_dir: Path) -> None:
+def build_site(conn, output_dir: Path, maintainer: str | None = None) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     game_dir = output_dir / "game"
     game_dir.mkdir(parents=True, exist_ok=True)
     _copy_assets(output_dir)
+    _copy_site_notice(output_dir)
 
     data = fetch_site_data(conn)
     search_json = json.dumps(data, ensure_ascii=False, indent=2)
@@ -34,14 +35,27 @@ def build_site(conn, output_dir: Path) -> None:
     games = _games_with_video_counts(data)
 
     (output_dir / "index.html").write_text(
-        index_template.render(games=games, slugify=slugify),
+        index_template.render(
+            games=games,
+            slugify=slugify,
+            maintainer=maintainer.strip() if maintainer else None,
+            notice_href="SITE_NOTICE.txt",
+        ),
         encoding="utf-8",
     )
 
     for game in games:
         slug = slugify(str(game["name"]))
         path = game_dir / f"{slug}.html"
-        path.write_text(game_template.render(game=game, slugify=slugify), encoding="utf-8")
+        path.write_text(
+            game_template.render(
+                game=game,
+                slugify=slugify,
+                maintainer=maintainer.strip() if maintainer else None,
+                notice_href="../SITE_NOTICE.txt",
+            ),
+            encoding="utf-8",
+        )
 
 
 def slugify(value: str) -> str:
@@ -68,6 +82,11 @@ def _copy_assets(output_dir: Path) -> None:
     for asset in source_dir.iterdir():
         if asset.is_file():
             shutil.copy2(asset, target_dir / asset.name)
+
+
+def _copy_site_notice(output_dir: Path) -> None:
+    source = Path(__file__).with_name("SITE_NOTICE.txt")
+    shutil.copy2(source, output_dir / source.name)
 
 
 def _games_with_video_counts(data: dict[str, list[dict[str, object]]]) -> list[dict[str, object]]:
@@ -326,13 +345,18 @@ select {
 
 .site-footer {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
   margin-top: auto;
   padding-top: 54px;
   color: #667085;
   font-size: 14px;
+}
+
+.site-footer .footer-line {
+  color: inherit;
+}
+
+.site-footer .footer-line + .footer-line {
+  margin-top: 6px;
 }
 
 .site-footer::before {

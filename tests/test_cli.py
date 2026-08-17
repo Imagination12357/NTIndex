@@ -48,6 +48,8 @@ def test_cli_crawl_and_build_with_example_input(tmp_path):
             "build",
             "--dist",
             str(out_dir),
+            "--maintainer",
+            "Example Maintainer",
         ],
         check=False,
         capture_output=True,
@@ -58,6 +60,10 @@ def test_cli_crawl_and_build_with_example_input(tmp_path):
     assert (out_dir / "index.html").exists()
     assert (out_dir / "game" / "genshin-impact.html").exists()
     assert (out_dir / "game" / "honkai-star-rail.html").exists()
+    assert (out_dir / "SITE_NOTICE.txt").exists()
+    assert "Maintained by Example Maintainer" in (
+        out_dir / "index.html"
+    ).read_text(encoding="utf-8")
 
     search_data = json.loads((out_dir / "search.json").read_text(encoding="utf-8"))
     assert [video["title"] for video in search_data["videos"]] == [
@@ -93,6 +99,7 @@ def test_cli_update_runs_crawl_then_build(tmp_path):
     assert "recorded 1 parse failure(s)" in result.stdout
     assert f"built {out_dir}" in result.stdout
     assert (out_dir / "search.json").exists()
+    assert "Maintained by" not in (out_dir / "index.html").read_text(encoding="utf-8")
 
 
 def test_cli_crawl_uses_default_channel_id(monkeypatch, tmp_path):

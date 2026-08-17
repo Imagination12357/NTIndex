@@ -1,4 +1,10 @@
 <footer class="site-footer">
-  <span>&copy; 2026 Imagination12357</span>
-  <a href="https://github.com/Imagination12357/NTIndex">Repository</a>
+  <p class="footer-line">
+    {% if maintainer %}Maintained by {{ maintainer }} | {% endif %}Powered by NTIndex &copy; 2026 Imagination12357 &middot;
+    <a href="https://github.com/Imagination12357/NTIndex">Repository</a>
+  </p>
+  <p class="footer-line">
+    Rights to videos, thumbnails, and game-related properties remain with their respective holders.
+    <a href="{{ notice_href }}">Details</a>
+  </p>
 </footer>

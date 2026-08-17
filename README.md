@@ -103,12 +103,21 @@ Use a different output directory:
 uv run ntindex build --dist public
 ```
 
+Set the generated site's maintainer:
+
+```powershell
+uv run ntindex build --maintainer "Site Operator"
+```
+
+When `--maintainer` is omitted, the footer does not display a maintainer.
+
 Generated files include:
 
 ```text
 dist/
 ├── index.html
 ├── search.json
+├── SITE_NOTICE.txt
 ├── style.css
 ├── app.js
 └── game/
@@ -134,6 +143,8 @@ Use a custom output directory:
 ```powershell
 uv run ntindex update --dist public
 ```
+
+The `update` command also accepts `--maintainer`.
 
 ## Merge
 
