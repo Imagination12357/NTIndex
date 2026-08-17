@@ -2,7 +2,7 @@
 
 NTIndex is a static site generator for NeonTeam model-swap videos.
 
-Site: https://ntindex.kro.kr
+Site: https://imagination12357.github.io/NTIndex/
 
 Use it to search NeonTeam swaps like `A as B` without digging through YouTube
 titles manually.
