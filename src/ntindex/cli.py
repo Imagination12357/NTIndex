@@ -73,11 +73,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_crawl_source_args(crawl)
 
     build = subparsers.add_parser("build", help="generate static site")
-    _add_dist_arg(build)
+    _add_build_args(build)
 
     update = subparsers.add_parser("update", help="crawl then build")
     _add_crawl_source_args(update)
-    _add_dist_arg(update)
+    _add_build_args(update)
 
     merge = subparsers.add_parser("merge", help="merge duplicate records")
     merge.add_argument("--yes", action="store_true", help="skip confirmation prompt")
@@ -127,7 +127,7 @@ def _add_crawl_source_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_dist_arg(parser: argparse.ArgumentParser) -> None:
+def _add_build_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--dist",
         "--out",
@@ -135,6 +135,10 @@ def _add_dist_arg(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_DIST,
         type=Path,
         help="static site output directory",
+    )
+    parser.add_argument(
+        "--maintainer",
+        help="name of the generated site's maintainer",
     )
 
 
@@ -179,7 +183,7 @@ def _load_crawl_source(args: argparse.Namespace):
 def _build(args: argparse.Namespace) -> int:
     conn = connect(args.db)
     init_db(conn)
-    build_site(conn, args.dist)
+    build_site(conn, args.dist, maintainer=args.maintainer)
     print(f"built {args.dist}")
     return 0
 

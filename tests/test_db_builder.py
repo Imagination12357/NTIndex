@@ -55,24 +55,35 @@ def test_build_site_writes_search_json_and_game_page(tmp_path):
     )
 
     out = tmp_path / "dist"
-    build_site(conn, out)
+    build_site(conn, out, maintainer="Example Maintainer")
 
     data = json.loads((out / "search.json").read_text(encoding="utf-8"))
     assert data["videos"][0]["source"] == "Furina"
     assert "window.NTINDEX_DATA" in (out / "search.js").read_text(encoding="utf-8")
     index_html = (out / "index.html").read_text(encoding="utf-8")
     assert "1 videos" in index_html
-    assert "&copy; 2026 Imagination12357" in index_html
+    assert "Maintained by Example Maintainer" in index_html
+    assert "Powered by NTIndex &copy; 2026 Imagination12357" in index_html
     assert "https://github.com/Imagination12357/NTIndex" in index_html
+    assert 'href="SITE_NOTICE.txt"' in index_html
+    assert ">Notices</a>" in index_html
     game_html = (out / "game" / "genshin-impact.html").read_text(encoding="utf-8")
     assert 'id="resultCount"' in game_html
     assert "MIT License" not in game_html
+    assert 'href="../SITE_NOTICE.txt"' in game_html
     assert "dist/autoComplete.min.js" in game_html
     assert "autoComplete.min.css" not in game_html
     assert (out / "index.html").exists()
     assert (out / "game" / "genshin-impact.html").exists()
     assert (out / "assets" / "home.svg").exists()
     assert (out / "assets" / "copy.svg").exists()
+    site_notice = (out / "SITE_NOTICE.txt").read_text(encoding="utf-8")
+    assert "Except for third-party notices and license texts" in site_notice
+    assert "SITE_NOTICE.txt file is associated documentation" in site_notice
+    assert "Permission is hereby granted" in site_notice
+    assert "autoComplete.js 10.2.10" in site_notice
+    assert "Copyright (c) 2026 Tarek Raafat" in site_notice
+    assert "Apache License 2.0 (autoComplete.js)" in site_notice
 
 
 def test_merge_character_requires_same_game(tmp_path):
